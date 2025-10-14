@@ -89,6 +89,12 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
   },
   {
+    title: "Session Analytics v2",
+    pathname: `/project/[projectId]/juspay-dashboard`,
+    icon: LayoutDashboard,
+    section: RouteSection.Main,
+  },
+  {
     title: "Dashboards",
     pathname: `/project/[projectId]/dashboards`,
     icon: LayoutDashboard,
