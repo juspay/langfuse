@@ -13,14 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import { 
-  User, 
+import {
+  User,
   Search,
   Filter,
   CheckCircle2,
   XCircle,
   Clock,
-  Calendar
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/src/utils/tailwind";
 import { Skeleton } from "@/src/components/ui/skeleton";
@@ -44,7 +44,9 @@ export default function JuspayDashboard() {
   const router = useRouter();
   const projectId = router.query.projectId as string;
   const sessionIdFromUrl = router.query.sessionId as string | undefined;
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessionIdFromUrl || null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    sessionIdFromUrl || null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedToolCall, setSelectedToolCall] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(true);
@@ -81,7 +83,7 @@ export default function JuspayDashboard() {
         query: { ...router.query, sessionId },
       },
       undefined,
-      { shallow: true }
+      { shallow: true },
     );
   };
 
@@ -96,7 +98,7 @@ export default function JuspayDashboard() {
     },
     {
       enabled: !!projectId,
-    }
+    },
   );
 
   // Fetch all tags for filtering (no limit issues!)
@@ -112,7 +114,7 @@ export default function JuspayDashboard() {
     },
     {
       enabled: !!projectId,
-    }
+    },
   );
 
   // Fetch traces for all sessions to get scores (within date range)
@@ -336,7 +338,7 @@ export default function JuspayDashboard() {
     },
     {
       enabled: !!projectId && !!selectedSessionId,
-    }
+    },
   );
 
   // Fetch full trace details for input/output
@@ -353,7 +355,7 @@ export default function JuspayDashboard() {
     },
     {
       enabled: !!selectedTraceForDetails && !!projectId,
-    }
+    },
   );
 
   // Get observations (tool calls) from trace details - filter out GENERATION type (llm-call) and sort by startTime
@@ -534,11 +536,11 @@ export default function JuspayDashboard() {
     if (!sessionTraces.data?.traces || sessionTraces.data.traces.length === 0) {
       return null;
     }
-    
+
     // Get the first trace's tags
     const firstTrace = sessionTraces.data.traces[0];
     if (!firstTrace?.tags || firstTrace.tags.length === 0) return null;
-    
+
     // Return the first tag as the agent name
     return firstTrace.tags[0];
   }, [sessionTraces.data?.traces]);
@@ -736,7 +738,7 @@ export default function JuspayDashboard() {
                         incorrect
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center gap-1">
                       <span className="text-muted-foreground">/</span>
                       <span className="font-bold text-gray-600 dark:text-gray-400">
