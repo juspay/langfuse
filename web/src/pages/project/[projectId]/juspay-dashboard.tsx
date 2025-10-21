@@ -57,6 +57,7 @@ export default function JuspayDashboard() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [filterCorrect, setFilterCorrect] = useState(false);
   const [filterIncorrect, setFilterIncorrect] = useState(false);
+  const [hideUnknownUser, setHideUnknownUser] = useState(true);
 
   // Sync selectedSessionId with URL on mount and when URL changes
   React.useEffect(() => {
@@ -115,6 +116,11 @@ export default function JuspayDashboard() {
   );
 
   // Fetch traces for all sessions to get scores (within date range)
+  // Using pagination to fetch all traces without hitting limits
+  const [allTraces, setAllTraces] = React.useState<any[]>([]);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
+
   const allSessionsTraces = api.traces.all.useQuery(
     {
       projectId,
@@ -134,17 +140,59 @@ export default function JuspayDashboard() {
       ],
       searchQuery: null,
       searchType: [],
-      page: 0,
+      page: currentPage,
       limit: 100, // API maximum limit
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && !!sessions.data?.sessions,
-    }
+      enabled: !!projectId && !!sessions.data?.sessions && hasMoreTraces,
+    },
   );
 
-  // Fetch scores for all traces to calculate statistics (within date range)
-  const allScores = api.scores.all.useQuery(
+  // Accumulate traces from pagination
+  React.useEffect(() => {
+    if (allSessionsTraces.data?.traces) {
+      const newTraces = allSessionsTraces.data.traces;
+
+      if (currentPage === 0) {
+        // First page - replace all traces
+        setAllTraces(newTraces);
+      } else {
+        // Subsequent pages - append traces
+        setAllTraces((prev) => [...prev, ...newTraces]);
+      }
+
+      // Check if there are more traces to fetch
+      if (newTraces.length < 100) {
+        setHasMoreTraces(false);
+      } else {
+        // Fetch next page
+        setCurrentPage((prev) => prev + 1);
+      }
+    }
+  }, [allSessionsTraces.data?.traces, currentPage]);
+
+  // Reset pagination when date range changes
+  React.useEffect(() => {
+    setAllTraces([]);
+    setCurrentPage(0);
+    setHasMoreTraces(true);
+  }, [dateRange.from, dateRange.to]);
+
+  // Create a wrapper object that mimics the original structure
+  const allSessionsTracesData = React.useMemo(
+    () => ({
+      traces: allTraces,
+    }),
+    [allTraces],
+  );
+
+  // Fetch scores using pagination (same pattern as traces)
+  const [allScores, setAllScores] = React.useState<any[]>([]);
+  const [currentScorePage, setCurrentScorePage] = React.useState(0);
+  const [hasMoreScores, setHasMoreScores] = React.useState(true);
+
+  const scoresQuery = api.scores.all.useQuery(
     {
       projectId,
       filter: [
@@ -154,40 +202,64 @@ export default function JuspayDashboard() {
           operator: "=",
           value: "genius-feedback",
         },
-        {
-          column: "timestamp",
-          type: "datetime",
-          operator: ">=",
-          value: dateRange.from,
-        },
-        {
-          column: "timestamp",
-          type: "datetime",
-          operator: "<=",
-          value: dateRange.to,
-        },
       ],
-      page: 0,
+      page: currentScorePage,
       limit: 100, // API maximum limit
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && !!allSessionsTraces.data?.traces,
+      enabled: !!projectId && allTraces.length > 0 && hasMoreScores,
+    },
+  );
+
+  // Accumulate scores from pagination
+  React.useEffect(() => {
+    if (scoresQuery.data?.scores) {
+      const newScores = scoresQuery.data.scores;
+
+      if (currentScorePage === 0) {
+        setAllScores(newScores);
+      } else {
+        setAllScores((prev) => [...prev, ...newScores]);
+      }
+
+      if (newScores.length < 100) {
+        setHasMoreScores(false);
+      } else {
+        setCurrentScorePage((prev) => prev + 1);
+      }
     }
+  }, [scoresQuery.data?.scores, currentScorePage]);
+
+  // Reset score pagination when traces change
+  React.useEffect(() => {
+    setAllScores([]);
+    setCurrentScorePage(0);
+    setHasMoreScores(true);
+  }, [allTraces.length]);
+
+  // Create wrapper for scores
+  const allScoresData = React.useMemo(
+    () => ({
+      scores: allScores,
+    }),
+    [allScores],
   );
 
   // Create a map of session IDs to their evaluation status (correct/incorrect)
   const sessionEvaluationMap = React.useMemo(() => {
-    if (!allScores.data?.scores || !allSessionsTraces.data?.traces) {
+    if (!allScoresData.scores.length || !allSessionsTracesData.traces.length) {
       return new Map<string, "correct" | "incorrect" | "mixed">();
     }
 
     const map = new Map<string, "correct" | "incorrect" | "mixed">();
-    
+
     // Group scores by session
     const sessionScores = new Map<string, number[]>();
-    allScores.data.scores.forEach((score: any) => {
-      const trace = allSessionsTraces.data.traces.find((t) => t.id === score.traceId);
+    allScoresData.scores.forEach((score: any) => {
+      const trace = allSessionsTracesData.traces.find(
+        (t) => t.id === score.traceId,
+      );
       if (trace?.sessionId) {
         if (!sessionScores.has(trace.sessionId)) {
           sessionScores.set(trace.sessionId, []);
@@ -200,7 +272,7 @@ export default function JuspayDashboard() {
     sessionScores.forEach((scores, sessionId) => {
       const hasCorrect = scores.some((v) => v === 1);
       const hasIncorrect = scores.some((v) => v === 0);
-      
+
       if (hasCorrect && hasIncorrect) {
         map.set(sessionId, "mixed");
       } else if (hasCorrect) {
@@ -211,14 +283,15 @@ export default function JuspayDashboard() {
     });
 
     return map;
-  }, [allScores.data?.scores, allSessionsTraces.data?.traces]);
+  }, [allScoresData.scores, allSessionsTracesData.traces]);
 
   // Create a map of session IDs to their tags
   const sessionToTagsMap = React.useMemo(() => {
-    if (!allSessionsTraces.data?.traces) return new Map<string, string[]>();
-    
+    if (!allSessionsTracesData.traces.length)
+      return new Map<string, string[]>();
+
     const map = new Map<string, string[]>();
-    allSessionsTraces.data.traces.forEach((trace) => {
+    allSessionsTracesData.traces.forEach((trace) => {
       if (trace.sessionId && trace.tags && trace.tags.length > 0) {
         // Store all tags for each session
         if (!map.has(trace.sessionId)) {
@@ -226,12 +299,14 @@ export default function JuspayDashboard() {
         } else {
           // Merge tags if session already exists
           const existingTags = map.get(trace.sessionId) || [];
-          map.set(trace.sessionId, [...new Set([...existingTags, ...trace.tags])]);
+          map.set(trace.sessionId, [
+            ...new Set([...existingTags, ...trace.tags]),
+          ]);
         }
       }
     });
     return map;
-  }, [allSessionsTraces.data?.traces]);
+  }, [allSessionsTracesData.traces]);
 
   // Get unique tags from filterOptions API (no 100-trace limit!)
   const uniqueTags = React.useMemo(() => {
@@ -269,7 +344,7 @@ export default function JuspayDashboard() {
     traceId: string;
     timestamp: Date;
   } | null>(null);
-  
+
   const traceDetails = api.traces.byIdWithObservationsAndScores.useQuery(
     {
       traceId: selectedTraceForDetails?.traceId ?? "",
@@ -307,94 +382,152 @@ export default function JuspayDashboard() {
       traceIds: sessionTraces.data?.traces.map((t) => t.id) ?? [],
     },
     {
-      enabled: !!projectId && !!selectedSessionId && !!sessionTraces.data?.traces,
-    }
+      enabled:
+        !!projectId && !!selectedSessionId && !!sessionTraces.data?.traces,
+    },
   );
 
   const filteredSessions = React.useMemo(() => {
     return sessions.data?.sessions.filter((session) => {
-    // Date range filter
-    const sessionDate = new Date(session.createdAt);
-    const matchesDateRange = sessionDate >= dateRange.from && sessionDate <= dateRange.to;
-    
-    if (!matchesDateRange) return false;
-    
-    // Search filter
-    const matchesSearch = searchQuery
-      ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        session.userIds?.some((uid) =>
-          uid.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : true;
-    
-    if (!matchesSearch) return false;
-    
-    // Show only merchant data filter
-    // Hide sessions where user_id contains "@juspay" (internal users)
-    // Show only actual merchant/customer sessions
-    if (showOnlyMerchant) {
-      const hasJuspayUser = session.userIds?.some((uid) =>
-        uid.toLowerCase().includes("@juspay")
-      );
-      if (hasJuspayUser) return false;
-    }
-    
-    // Tag filter
-    if (selectedTag !== "all") {
-      const sessionTags = sessionToTagsMap.get(session.id);
-      if (!sessionTags || !sessionTags.includes(selectedTag)) return false;
-    }
-    
-    // Correct/Incorrect filter
-    if (filterCorrect || filterIncorrect) {
-      const evaluation = sessionEvaluationMap.get(session.id);
-      
-      // If both filters are checked, show sessions that match either
-      if (filterCorrect && filterIncorrect) {
-        if (!evaluation) return false;
+      // Date range filter
+      const sessionDate = new Date(session.createdAt);
+      const matchesDateRange =
+        sessionDate >= dateRange.from && sessionDate <= dateRange.to;
+
+      if (!matchesDateRange) return false;
+
+      // Search filter
+      const matchesSearch = searchQuery
+        ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.userIds?.some((uid) =>
+            uid.toLowerCase().includes(searchQuery.toLowerCase()),
+          )
+        : true;
+
+      if (!matchesSearch) return false;
+
+      // Show only merchant data filter
+      // Hide sessions where user_id contains "@juspay" (internal users)
+      // Show only actual merchant/customer sessions
+      if (showOnlyMerchant) {
+        const hasJuspayUser = session.userIds?.some((uid) =>
+          uid.toLowerCase().includes("@juspay"),
+        );
+        if (hasJuspayUser) return false;
       }
-      // If only correct is checked
-      else if (filterCorrect) {
-        if (evaluation !== "correct") return false;
+
+      // Tag filter
+      if (selectedTag !== "all") {
+        const sessionTags = sessionToTagsMap.get(session.id);
+        if (!sessionTags || !sessionTags.includes(selectedTag)) return false;
       }
-      // If only incorrect is checked
-      else if (filterIncorrect) {
-        if (evaluation !== "incorrect" && evaluation !== "mixed") return false;
+
+      // Correct/Incorrect filter
+      if (filterCorrect || filterIncorrect) {
+        const evaluation = sessionEvaluationMap.get(session.id);
+
+        // If both filters are checked, show sessions that match either
+        if (filterCorrect && filterIncorrect) {
+          if (!evaluation) return false;
+        }
+        // If only correct is checked
+        else if (filterCorrect) {
+          if (evaluation !== "correct") return false;
+        }
+        // If only incorrect is checked
+        else if (filterIncorrect) {
+          if (evaluation !== "incorrect" && evaluation !== "mixed")
+            return false;
+        }
       }
-    }
-    
-    return true;
+
+      // Hide Unknown User filter
+      if (hideUnknownUser) {
+        const isUnknownUser =
+          !session.userIds ||
+          session.userIds.length === 0 ||
+          session.userIds[0] === "Unknown User";
+        if (isUnknownUser) return false;
+      }
+
+      return true;
     });
-  }, [sessions.data?.sessions, dateRange, searchQuery, showOnlyMerchant, selectedTag, filterCorrect, filterIncorrect, sessionToTagsMap, sessionEvaluationMap]);
+  }, [
+    sessions.data?.sessions,
+    dateRange,
+    searchQuery,
+    showOnlyMerchant,
+    selectedTag,
+    filterCorrect,
+    filterIncorrect,
+    hideUnknownUser,
+    sessionToTagsMap,
+    sessionEvaluationMap,
+  ]);
 
   // Calculate statistics based on queries (traces) not sessions
   const statistics = React.useMemo(() => {
-    if (!allSessionsTraces.data?.traces) {
-      return { totalQueries: 0, correctQueries: 0, incorrectQueries: 0, correctPercentage: 0, totalSessions: 0 };
+    if (!allSessionsTracesData.traces.length) {
+      return {
+        totalQueries: 0,
+        correctQueries: 0,
+        incorrectQueries: 0,
+        correctPercentage: 0,
+        totalSessions: 0,
+      };
     }
 
-    // Total queries = all traces in the date range
-    const totalQueries = allSessionsTraces.data.traces.length;
+    // Filter traces based on current filters (tag filter)
+    const filteredTraces = allSessionsTracesData.traces.filter((trace) => {
+      // Apply tag filter if selected
+      if (selectedTag !== "all") {
+        if (!trace.tags || !trace.tags.includes(selectedTag)) return false;
+      }
+      return true;
+    });
 
-    // Count correct/incorrect queries from genius-feedback scores
+    // Total queries = filtered traces
+    const totalQueries = filteredTraces.length;
+
+    // Count correct/incorrect queries from genius-feedback scores (only for filtered traces)
     let correctQueries = 0;
     let incorrectQueries = 0;
 
-    if (allScores.data?.scores) {
-      allScores.data.scores.forEach((score: any) => {
-        if (score.value === 1) {
-          correctQueries++;
-        } else if (score.value === 0) {
-          incorrectQueries++;
+    if (allScoresData.scores.length > 0) {
+      allScoresData.scores.forEach((score: any) => {
+        // Check if this score belongs to a filtered trace
+        const trace = filteredTraces.find((t) => t.id === score.traceId);
+        if (trace) {
+          if (score.value === 1) {
+            correctQueries++;
+          } else if (score.value === 0) {
+            incorrectQueries++;
+          }
         }
       });
     }
 
-    const correctPercentage = totalQueries > 0 ? Math.round((correctQueries / totalQueries) * 100) : 0;
+    // Calculate percentage based on evaluated queries only (correct + incorrect)
+    const evaluatedQueries = correctQueries + incorrectQueries;
+    const correctPercentage =
+      evaluatedQueries > 0
+        ? Math.round((correctQueries / evaluatedQueries) * 100)
+        : 0;
     const totalSessions = filteredSessions?.length || 0;
 
-    return { totalQueries, correctQueries, incorrectQueries, correctPercentage, totalSessions };
-  }, [allScores.data?.scores, allSessionsTraces.data?.traces, filteredSessions]);
+    return {
+      totalQueries,
+      correctQueries,
+      incorrectQueries,
+      correctPercentage,
+      totalSessions,
+    };
+  }, [
+    allScoresData.scores,
+    allSessionsTracesData.traces,
+    filteredSessions,
+    selectedTag,
+  ]);
 
   // Extract agent name from the first trace's tags (since we can't access input from list query)
   const selectedSessionAgentName = React.useMemo(() => {
@@ -415,24 +548,35 @@ export default function JuspayDashboard() {
       headerProps={{
         title: "Session Analytics v2",
         help: {
-          description: "Session-based conversation view with detailed trace analysis.",
+          description:
+            "Session-based conversation view with detailed trace analysis.",
         },
       }}
     >
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Left Sidebar - Sessions List */}
-        <div className="w-80 border-r bg-background">
-          <div className="flex flex-col h-full">
+        <div className="w-84 border-r bg-background">
+          <div className="flex h-full flex-col">
             {/* Date Range Filter */}
-            <div className="p-4 border-b">
-              <Collapsible open={showDatePicker} onOpenChange={setShowDatePicker}>
+            <div className="border-b p-4">
+              <Collapsible
+                open={showDatePicker}
+                onOpenChange={setShowDatePicker}
+              >
                 <CollapsibleTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                  >
                     <Calendar className="mr-2 h-4 w-4" />
                     <div className="flex flex-col items-start text-left">
-                      <span className="text-xs text-muted-foreground">Select date range</span>
+                      <span className="text-xs text-muted-foreground">
+                        Select date range
+                      </span>
                       <span className="text-xs font-medium">
-                        {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+                        {dateRange.from.toLocaleDateString()} -{" "}
+                        {dateRange.to.toLocaleDateString()}
                       </span>
                     </div>
                   </Button>
@@ -440,7 +584,9 @@ export default function JuspayDashboard() {
                 <CollapsibleContent className="mt-2">
                   <Card className="p-3">
                     <div className="space-y-2">
-                      <div className="text-xs font-medium mb-2">Quick select</div>
+                      <div className="mb-2 text-xs font-medium">
+                        Quick select
+                      </div>
                       <div className="space-y-1">
                         <Button
                           variant="ghost"
@@ -519,7 +665,7 @@ export default function JuspayDashboard() {
                         >
                           Last 90 days
                         </Button>
-                        
+
                         {/* Custom Date Picker */}
                         <Popover>
                           <PopoverTrigger asChild>
@@ -541,10 +687,16 @@ export default function JuspayDashboard() {
                               onSelect={(range: any) => {
                                 if (range?.from) {
                                   setDateRange({
-                                    from: new Date(range.from.setHours(0, 0, 0, 0)),
-                                    to: range.to 
-                                      ? new Date(range.to.setHours(23, 59, 59, 999))
-                                      : new Date(range.from.setHours(23, 59, 59, 999)),
+                                    from: new Date(
+                                      range.from.setHours(0, 0, 0, 0),
+                                    ),
+                                    to: range.to
+                                      ? new Date(
+                                          range.to.setHours(23, 59, 59, 999),
+                                        )
+                                      : new Date(
+                                          range.from.setHours(23, 59, 59, 999),
+                                        ),
                                   });
                                 }
                               }}
@@ -560,25 +712,29 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Statistics Section */}
-            <div className="p-4 border-b">
+            <div className="border-b p-4">
               {sessions.isLoading ? (
                 <Skeleton className="h-16 w-full" />
               ) : (
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 rounded-lg p-3 border">
-                  <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 p-3 dark:from-blue-950/20 dark:to-purple-950/20">
+                  <div className="mb-2 flex items-center gap-2">
                     <span className="text-blue-600 dark:text-blue-400">📊</span>
                     <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
                       {filteredSessions?.length || 0}
                     </span>
-                    <span className="text-xs text-muted-foreground">sessions</span>
+                    <span className="text-xs text-muted-foreground">
+                      sessions
+                    </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-red-600 dark:text-red-400">
                         {statistics.incorrectQueries}
                       </span>
-                      <span className="text-xs text-muted-foreground">incorrect</span>
+                      <span className="text-xs text-muted-foreground">
+                        incorrect
+                      </span>
                     </div>
                     
                     <div className="flex items-center gap-1">
@@ -586,14 +742,18 @@ export default function JuspayDashboard() {
                       <span className="font-bold text-gray-600 dark:text-gray-400">
                         {statistics.totalQueries}
                       </span>
-                      <span className="text-xs text-muted-foreground">total</span>
+                      <span className="text-xs text-muted-foreground">
+                        total
+                      </span>
                     </div>
-                    
+
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-green-600 dark:text-green-400">
                         ({statistics.correctPercentage}%
                       </span>
-                      <span className="text-xs text-muted-foreground">correct)</span>
+                      <span className="text-xs text-muted-foreground">
+                        correct)
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -601,7 +761,7 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Search and Filters */}
-            <div className="p-4 border-b space-y-3">
+            <div className="space-y-3 border-b p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -611,7 +771,7 @@ export default function JuspayDashboard() {
                   className="pl-9"
                 />
               </div>
-              
+
               <Collapsible open={showFilters} onOpenChange={setShowFilters}>
                 <CollapsibleTrigger asChild>
                   <Button variant="outline" size="sm" className="w-full">
@@ -619,9 +779,9 @@ export default function JuspayDashboard() {
                     {showFilters ? "Hide" : "Show"} Filters
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-3 mt-2">
+                <CollapsibleContent className="mt-2 space-y-3">
                   <div className="space-y-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className="flex cursor-pointer items-center gap-2">
                       <input
                         type="checkbox"
                         checked={showOnlyMerchant}
@@ -630,11 +790,16 @@ export default function JuspayDashboard() {
                       />
                       <span className="text-sm">Show only merchant data</span>
                     </label>
-                    
+
                     {/* Tag Filter - Using Shadcn Select for controlled dropdown direction */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Filter by Agent Name</label>
-                      <Select value={selectedTag} onValueChange={setSelectedTag}>
+                      <label className="text-sm font-medium">
+                        Filter by Agent Name
+                      </label>
+                      <Select
+                        value={selectedTag}
+                        onValueChange={setSelectedTag}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="All Tags" />
                         </SelectTrigger>
@@ -648,12 +813,14 @@ export default function JuspayDashboard() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     {/* Correct/Incorrect Filters */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Filter by Evaluation</label>
+                      <label className="text-sm font-medium">
+                        Filter by Evaluation
+                      </label>
                       <div className="space-y-1">
-                        <label className="flex items-center gap-2 cursor-pointer">
+                        <label className="flex cursor-pointer items-center gap-2">
                           <input
                             type="checkbox"
                             checked={filterCorrect}
@@ -661,17 +828,35 @@ export default function JuspayDashboard() {
                             className="rounded"
                           />
                           <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          <span className="text-sm">Show only correct sessions</span>
+                          <span className="text-sm">
+                            Show only correct sessions
+                          </span>
                         </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
+                        <label className="flex cursor-pointer items-center gap-2">
                           <input
                             type="checkbox"
                             checked={filterIncorrect}
-                            onChange={(e) => setFilterIncorrect(e.target.checked)}
+                            onChange={(e) =>
+                              setFilterIncorrect(e.target.checked)
+                            }
                             className="rounded"
                           />
                           <XCircle className="h-3 w-3 text-red-600" />
-                          <span className="text-sm">Show only incorrect sessions</span>
+                          <span className="text-sm">
+                            Show only incorrect sessions
+                          </span>
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={hideUnknownUser}
+                            onChange={(e) =>
+                              setHideUnknownUser(e.target.checked)
+                            }
+                            className="rounded"
+                          />
+                          <User className="h-3 w-3 text-gray-600" />
+                          <span className="text-sm">Hide unknown user</span>
                         </label>
                       </div>
                     </div>
@@ -680,14 +865,15 @@ export default function JuspayDashboard() {
               </Collapsible>
 
               <div className="text-xs text-muted-foreground">
-                Showing: {filteredSessions?.length || 0} of {sessions.data?.sessions.length || 0} sessions
+                Showing: {filteredSessions?.length || 0} of{" "}
+                {sessions.data?.sessions.length || 0} sessions
               </div>
             </div>
 
             {/* Sessions List */}
             <ScrollArea className="flex-1">
               {sessions.isLoading ? (
-                <div className="p-4 space-y-3 pb-8">
+                <div className="space-y-3 p-4 pb-8">
                   {[...Array(5)].map((_, i) => (
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
@@ -696,18 +882,22 @@ export default function JuspayDashboard() {
                 <div className="p-2 pb-8">
                   {filteredSessions?.map((session) => {
                     // Get the most recent trace timestamp for this session
-                    const sessionTraceTimestamp = allSessionsTraces.data?.traces
+                    const sessionTraceTimestamp = allSessionsTracesData.traces
                       .filter((trace) => trace.sessionId === session.id)
-                      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0]?.timestamp;
-                    
-                    const displayTime = sessionTraceTimestamp || session.createdAt;
-                    
+                      .sort(
+                        (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+                      )[0]?.timestamp;
+
+                    const displayTime =
+                      sessionTraceTimestamp || session.createdAt;
+
                     return (
                       <Card
                         key={session.id}
                         className={cn(
-                          "mb-2 p-3 cursor-pointer transition-colors hover:bg-accent",
-                          selectedSessionId === session.id && "bg-accent border-primary"
+                          "mb-3 cursor-pointer p-3 transition-colors hover:bg-accent",
+                          selectedSessionId === session.id &&
+                            "border-2 border-blue-500 bg-accent",
                         )}
                         onClick={() => handleSessionSelect(session.id)}
                       >
@@ -715,7 +905,7 @@ export default function JuspayDashboard() {
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium text-sm">
+                              <span className="text-sm font-medium">
                                 {session.userIds?.[0] || "Unknown User"}
                               </span>
                             </div>
@@ -723,11 +913,11 @@ export default function JuspayDashboard() {
                               {session.countTraces} traces
                             </Badge>
                           </div>
-                          
+
                           <div className="text-xs text-muted-foreground">
                             Session: {session.id.slice(0, 16)}...
                           </div>
-                          
+
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
                             {new Date(displayTime).toLocaleString()}
@@ -743,11 +933,11 @@ export default function JuspayDashboard() {
         </div>
 
         {/* Middle Section - Conversation Flow */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex flex-1 flex-col">
           {selectedSessionId ? (
             <>
               {/* Session Header */}
-              <div className="p-4 border-b bg-muted/50">
+              <div className="border-b bg-muted/50 p-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold">
@@ -774,9 +964,11 @@ export default function JuspayDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-4 max-w-4xl mx-auto pb-8">
+                  <div className="mx-auto max-w-4xl space-y-4 pb-8">
                     {sessionTraces.data?.traces.map((trace, index) => {
-                      const traceMetric = traceMetrics.data?.find((m) => m.id === trace.id);
+                      const traceMetric = traceMetrics.data?.find(
+                        (m) => m.id === trace.id,
+                      );
                       return (
                         <TraceMessage
                           key={trace.id}
@@ -786,7 +978,10 @@ export default function JuspayDashboard() {
                           isSelected={selectedToolCall?.id === trace.id}
                           onSelect={(traceId, timestamp) => {
                             setSelectedTraceForDetails({ traceId, timestamp });
-                            setSelectedToolCall({ ...trace, metric: traceMetric });
+                            setSelectedToolCall({
+                              ...trace,
+                              metric: traceMetric,
+                            });
                           }}
                         />
                       );
@@ -796,9 +991,9 @@ export default function JuspayDashboard() {
               </ScrollArea>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex flex-1 items-center justify-center text-muted-foreground">
               <div className="text-center">
-                <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <User className="mx-auto mb-4 h-12 w-12 opacity-50" />
                 <p>Select a session to view conversation</p>
               </div>
             </div>
@@ -806,46 +1001,53 @@ export default function JuspayDashboard() {
         </div>
 
         {/* Right Sidebar - Tool Call Details */}
-        <div className="w-96 border-l bg-background">
-          <div className="flex flex-col h-full">
-            <div className="p-4 border-b">
+        <div className="w-[450px] border-l bg-background">
+          <div className="flex h-full flex-col">
+            <div className="border-b p-4">
               <h3 className="font-semibold">
                 {selectedToolCall ? "Tool Call Details" : "Response Details"}
               </h3>
             </div>
-            
+
             <ScrollArea className="flex-1 p-4">
               {selectedToolCall ? (
                 <div className="space-y-4 pb-6">
                   {/* Show all tool calls/observations */}
                   {traceDetails.isLoading ? (
-                    <div className="text-sm text-muted-foreground">Loading tool calls...</div>
+                    <div className="text-sm text-muted-foreground">
+                      Loading tool calls...
+                    </div>
                   ) : (
                     <>
                       {observations && observations.length > 0 ? (
                         observations.map((obs: any, index: number) => (
                           <Collapsible key={obs.id} defaultOpen={index === 0}>
                             <Card className="mb-4 overflow-hidden">
-                              <CollapsibleTrigger className="w-full p-3 hover:bg-accent transition-all duration-200">
+                              <CollapsibleTrigger className="w-full p-3 transition-all duration-200 hover:bg-accent">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
-                                    <div className="h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs transition-transform duration-200 group-data-[state=open]:rotate-90">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs text-white transition-transform duration-200 group-data-[state=open]:rotate-90">
                                       {index + 1}
                                     </div>
                                     <span className="text-sm font-medium">
                                       Tool call {index + 1}
                                     </span>
-                                    <Badge variant="outline" className="text-xs">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
                                       {obs.name || obs.type}
                                     </Badge>
                                   </div>
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2">
-                                <div className="p-3 space-y-3 border-t">
+                                <div className="space-y-3 border-t p-3">
                                   <ObservationDetails
                                     observationId={obs.id}
-                                    traceId={selectedTraceForDetails?.traceId ?? ""}
+                                    traceId={
+                                      selectedTraceForDetails?.traceId ?? ""
+                                    }
                                     projectId={projectId}
                                     startTime={obs.startTime}
                                     name={obs.name || obs.type}
@@ -856,9 +1058,11 @@ export default function JuspayDashboard() {
                           </Collapsible>
                         ))
                       ) : (
-                        <div className="text-sm text-muted-foreground">No tool calls found for this trace</div>
+                        <div className="text-sm text-muted-foreground">
+                          No tool calls found for this trace
+                        </div>
                       )}
-                      
+
                       {/* Final Response Section - Green Highlighted */}
                       {traceDetails.data && (
                         <FinalResponseSection
@@ -870,7 +1074,7 @@ export default function JuspayDashboard() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   Click on a message to view details
                 </div>
               )}
@@ -906,18 +1110,19 @@ function ObservationDetails({
     },
     {
       enabled: !!observationId && !!projectId,
-    }
+    },
   );
 
   // Extract arguments from input - return as object for PrettyJsonView
   const inputArguments = (() => {
     if (!observation.data?.input) return null;
-    
+
     try {
-      const parsed = typeof observation.data.input === "string" 
-        ? JSON.parse(observation.data.input)
-        : observation.data.input;
-      
+      const parsed =
+        typeof observation.data.input === "string"
+          ? JSON.parse(observation.data.input)
+          : observation.data.input;
+
       // Extract only the arguments field
       if (parsed.arguments) {
         return parsed.arguments;
@@ -931,30 +1136,30 @@ function ObservationDetails({
   // Extract only the nested result.result from output - return as object for rendering
   const outputResult = (() => {
     if (!observation.data?.output) return null;
-    
+
     try {
       let parsed: any = observation.data.output;
-      
+
       // If it's a string, parse it
       if (typeof parsed === "string") {
         parsed = JSON.parse(parsed);
       }
-      
+
       // If result is a string, parse it again (double-stringified)
       if (parsed.result && typeof parsed.result === "string") {
         parsed.result = JSON.parse(parsed.result);
       }
-      
+
       // Extract result.result (the nested result field)
       if (parsed.result && parsed.result.result) {
         return parsed.result.result;
       }
-      
+
       // Fallback to just result if nested result doesn't exist
       if (parsed.result) {
         return parsed.result;
       }
-      
+
       return parsed;
     } catch (e) {
       console.error("Error parsing output:", e);
@@ -967,22 +1172,24 @@ function ObservationDetails({
   }
 
   return (
-    <div className="p-3 space-y-3 border-t">
+    <div className="space-y-3 border-t p-3">
       {/* Request/Input - Light Blue Border */}
-      <div className="border-2 border-blue-400 bg-blue-50 dark:bg-blue-950/20 rounded-md p-3">
-        <div className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-2">
+      <div className="overflow-hidden rounded-md border-2 border-blue-400 bg-blue-50 p-3 dark:bg-blue-950/20">
+        <div className="mb-2 text-xs font-medium text-blue-700 dark:text-blue-400">
           Req → {name}
         </div>
-        <PrettyJsonView
-          json={inputArguments}
-          currentView="json"
-          className="text-xs"
-        />
+        <div className="[&_*]:overflow-wrap-anywhere overflow-x-auto [&_*]:break-all">
+          <PrettyJsonView
+            json={inputArguments}
+            currentView="json"
+            className="text-xs"
+          />
+        </div>
       </div>
 
       {/* Response/Output - Purple Border */}
-      <div className="border-2 border-purple-400 bg-purple-50 dark:bg-purple-950/20 rounded-md p-3">
-        <div className="flex items-center justify-between mb-2">
+      <div className="overflow-hidden rounded-md border-2 border-purple-400 bg-purple-50 p-3 dark:bg-purple-950/20">
+        <div className="mb-2 flex items-center justify-between">
           <div className="text-xs font-medium text-purple-700 dark:text-purple-400">
             Res
           </div>
@@ -990,14 +1197,16 @@ function ObservationDetails({
             Response ({name})
           </Badge>
         </div>
-        <div className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-2">
+        <div className="mb-2 text-xs font-medium text-purple-700 dark:text-purple-400">
           {name}_jaf
         </div>
-        <PrettyJsonView
-          json={outputResult}
-          currentView="json"
-          className="text-xs"
-        />
+        <div className="[&_*]:overflow-wrap-anywhere overflow-x-auto [&_*]:break-all">
+          <PrettyJsonView
+            json={outputResult}
+            currentView="json"
+            className="text-xs"
+          />
+        </div>
       </div>
     </div>
   );
@@ -1022,23 +1231,23 @@ function FinalResponseSection({
     {
       enabled: !!trace.id && !!projectId,
       staleTime: 60 * 1000,
-    }
+    },
   );
 
   // Use the EXACT same extraction logic as TraceMessage component
   const finalOutputText = (() => {
     if (!traceData.data?.output) return null;
-    
+
     try {
       let parsed: any = traceData.data.output;
-      
+
       // Parse if it's a string
       if (typeof parsed === "string") {
         parsed = JSON.parse(parsed);
       }
-      
+
       let text = "";
-      
+
       // Extract outcome.output.text
       if (parsed.outcome?.output?.text) {
         text = parsed.outcome.output.text;
@@ -1049,23 +1258,29 @@ function FinalResponseSection({
       }
       // Fallback: try just output
       else if (parsed.output) {
-        text = typeof parsed.output === "string" ? parsed.output : JSON.stringify(parsed.output);
+        text =
+          typeof parsed.output === "string"
+            ? parsed.output
+            : JSON.stringify(parsed.output);
       }
       // Last resort: stringify the whole thing
       else {
         text = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
       }
-      
+
       // Replace placeholders with actual values from replacements
       if (parsed.outcome?.output?.replacements) {
         const replacements = parsed.outcome.output.replacements;
         Object.entries(replacements).forEach(([key, value]) => {
           // Replace {key} with the actual value
           const placeholder = `{${key}}`;
-          text = text.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(value));
+          text = text.replace(
+            new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+            String(value),
+          );
         });
       }
-      
+
       return text;
     } catch (e) {
       console.error("Error parsing final output:", e);
@@ -1077,7 +1292,9 @@ function FinalResponseSection({
     return (
       <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-950/20">
         <div className="p-4">
-          <div className="text-sm text-muted-foreground">Loading final response...</div>
+          <div className="text-sm text-muted-foreground">
+            Loading final response...
+          </div>
         </div>
       </Card>
     );
@@ -1088,8 +1305,8 @@ function FinalResponseSection({
   return (
     <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-950/20">
       <div className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Badge className="bg-green-600 hover:bg-green-700 text-white">
+        <div className="mb-3 flex items-center gap-2">
+          <Badge className="bg-green-600 text-white hover:bg-green-700">
             Final Response
           </Badge>
         </div>
@@ -1118,7 +1335,9 @@ function TraceMessage({
   isSelected: boolean;
   onSelect: (traceId: string, timestamp: Date) => void;
 }) {
-  const [selectedRating, setSelectedRating] = React.useState<string | null>(null);
+  const [selectedRating, setSelectedRating] = React.useState<string | null>(
+    null,
+  );
 
   const traceData = api.traces.byId.useQuery(
     {
@@ -1130,7 +1349,7 @@ function TraceMessage({
     {
       enabled: !!trace.id && !!projectId,
       staleTime: 60 * 1000,
-    }
+    },
   );
 
   // Fetch scores for this trace to get LLM eval feedback
@@ -1146,85 +1365,100 @@ function TraceMessage({
       refetchInterval: (query) => {
         if (!query.state.data) return false;
         const hasGeniusFeedback = query.state.data.scores?.some(
-          (score: any) => score.name === "genius-feedback"
+          (score: any) => score.name === "genius-feedback",
         );
         return hasGeniusFeedback ? false : 5000;
       },
-    }
+    },
   );
 
   // Extract genius-feedback score
   const geniusFeedbackScore = React.useMemo(() => {
     if (!traceWithScores.data?.scores) return null;
     return traceWithScores.data.scores.find(
-      (score: any) => score.name === "genius-feedback"
+      (score: any) => score.name === "genius-feedback",
     );
   }, [traceWithScores.data?.scores]);
 
-  // Extract user_query from input
-  const inputText = (() => {
-    if (!traceData.data?.input) return trace.name || "Query";
-    
+  // Extract user_query from input, or return formatted JSON
+  const inputContent = (() => {
+    if (!traceData.data?.input)
+      return { text: trace.name || "Query", isJson: false };
+
     if (typeof traceData.data.input === "string") {
       try {
         const parsed = JSON.parse(traceData.data.input);
-        return parsed.user_query || traceData.data.input;
+        // If user_query exists, return it as text
+        if (parsed.user_query) {
+          return { text: parsed.user_query, isJson: false };
+        }
+        // Otherwise return the whole object as JSON
+        return { json: parsed, isJson: true };
       } catch {
-        return traceData.data.input;
+        return { text: traceData.data.input, isJson: false };
       }
     }
-    
+
     // If it's already an object
-    return (traceData.data.input as any).user_query || JSON.stringify(traceData.data.input);
+    const input = traceData.data.input as any;
+    if (input.user_query) {
+      return { text: input.user_query, isJson: false };
+    }
+    return { json: input, isJson: true };
   })();
 
-  // Extract only the text from outcome.output.text and replace placeholders
-  const outputText = (() => {
-    if (!traceData.data?.output) return "Response";
-    
+  // Extract output text or return formatted JSON
+  const outputContent = (() => {
+    if (!traceData.data?.output) return { text: "Response", isJson: false };
+
     try {
       let parsed: any = traceData.data.output;
-      
+
       // Parse if it's a string
       if (typeof parsed === "string") {
         parsed = JSON.parse(parsed);
       }
-      
+
       let text = "";
-      
+
       // Extract outcome.output.text
       if (parsed.outcome?.output?.text) {
         text = parsed.outcome.output.text;
+
+        // Replace placeholders with actual values from replacements
+        if (parsed.outcome?.output?.replacements) {
+          const replacements = parsed.outcome.output.replacements;
+          Object.entries(replacements).forEach(([key, value]) => {
+            const placeholder = `{${key}}`;
+            text = text.replace(
+              new RegExp(
+                placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                "g",
+              ),
+              String(value),
+            );
+          });
+        }
+
+        return { text, isJson: false };
       }
       // Fallback: try output.text
       else if (parsed.output?.text) {
-        text = parsed.output.text;
+        return { text: parsed.output.text, isJson: false };
       }
-      // Fallback: try just output
-      else if (parsed.output) {
-        text = typeof parsed.output === "string" ? parsed.output : JSON.stringify(parsed.output);
-      }
-      // Last resort: stringify the whole thing
+      // If no text field found, return the whole object as JSON
       else {
-        text = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+        return { json: parsed, isJson: true };
       }
-      
-      // Replace placeholders with actual values from replacements
-      if (parsed.outcome?.output?.replacements) {
-        const replacements = parsed.outcome.output.replacements;
-        Object.entries(replacements).forEach(([key, value]) => {
-          // Replace {key} with the actual value
-          const placeholder = `{${key}}`;
-          text = text.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), String(value));
-        });
-      }
-      
-      return text;
     } catch (e) {
       console.error("Error parsing output:", e);
-      return typeof traceData.data.output === "string" 
-        ? traceData.data.output 
-        : JSON.stringify(traceData.data.output);
+      return {
+        text:
+          typeof traceData.data.output === "string"
+            ? traceData.data.output
+            : JSON.stringify(traceData.data.output),
+        isJson: false,
+      };
     }
   })();
 
@@ -1232,16 +1466,26 @@ function TraceMessage({
     <div className="space-y-2">
       {/* User Query */}
       <div className="flex justify-end">
-        <Card className="max-w-[80%] p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
+        <Card className="max-w-[80%] border-0 bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white">
           <div className="flex items-start gap-2">
-            <User className="h-4 w-4 mt-1" />
+            <User className="mt-1 h-4 w-4" />
             <div className="flex-1">
-              <div className="text-xs opacity-90 mb-1">
+              <div className="mb-1 text-xs opacity-90">
                 User Q • {new Date(trace.timestamp).toLocaleTimeString()}
               </div>
-              <div className="text-sm whitespace-pre-wrap">
-                {inputText}
-              </div>
+              {inputContent.isJson ? (
+                <div className="text-sm">
+                  <PrettyJsonView
+                    json={inputContent.json}
+                    currentView="json"
+                    className="text-xs"
+                  />
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap text-sm">
+                  {inputContent.text}
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -1251,17 +1495,17 @@ function TraceMessage({
       <div className="flex justify-start">
         <Card
           className={cn(
-            "max-w-[80%] p-4 cursor-pointer transition-colors hover:bg-accent",
-            isSelected && "bg-accent border-primary"
+            "max-w-[80%] cursor-pointer p-4 transition-colors hover:bg-accent",
+            isSelected && "border-primary bg-accent",
           )}
           onClick={() => onSelect(trace.id, trace.timestamp)}
         >
           <div className="flex items-start gap-2">
-            <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-xs">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 text-xs text-white">
               AI
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="mb-1 flex items-center gap-2">
                 <span className="text-xs font-medium">Assistant Ans</span>
                 <span className="text-xs text-muted-foreground">
                   {new Date(trace.timestamp).toLocaleTimeString()}
@@ -1272,22 +1516,33 @@ function TraceMessage({
                   </Badge>
                 )}
               </div>
-              <div className="text-sm">
-                <MarkdownJsonView
-                  content={outputText}
-                  customCodeHeaderClassName="bg-secondary"
-                />
-              </div>
+              {outputContent.isJson ? (
+                <div className="text-sm">
+                  <PrettyJsonView
+                    json={outputContent.json}
+                    currentView="json"
+                    className="text-xs"
+                  />
+                </div>
+              ) : (
+                <div className="text-sm">
+                  <MarkdownJsonView
+                    content={outputContent.text}
+                    customCodeHeaderClassName="bg-secondary"
+                  />
+                </div>
+              )}
 
               {/* Rate Buttons */}
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium">Rate:</span>
                 <Button
                   variant={selectedRating === "correct" ? "default" : "outline"}
                   size="sm"
                   className={cn(
                     "h-7 text-xs",
-                    selectedRating === "correct" && "bg-black hover:bg-black/90 text-white"
+                    selectedRating === "correct" &&
+                      "bg-black text-white hover:bg-black/90",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1299,11 +1554,14 @@ function TraceMessage({
                   Correct
                 </Button>
                 <Button
-                  variant={selectedRating === "needs-work" ? "default" : "outline"}
+                  variant={
+                    selectedRating === "needs-work" ? "default" : "outline"
+                  }
                   size="sm"
                   className={cn(
                     "h-7 text-xs",
-                    selectedRating === "needs-work" && "bg-black hover:bg-black/90 text-white"
+                    selectedRating === "needs-work" &&
+                      "bg-black text-white hover:bg-black/90",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1319,7 +1577,8 @@ function TraceMessage({
                   size="sm"
                   className={cn(
                     "h-7 text-xs",
-                    selectedRating === "wrong" && "bg-black hover:bg-black/90 text-white"
+                    selectedRating === "wrong" &&
+                      "bg-black text-white hover:bg-black/90",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1348,10 +1607,10 @@ function TraceMessage({
 
               {/* LLM Eval Section - Shows when genius-feedback score is available */}
               {geniusFeedbackScore && (
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="h-5 w-5 rounded-full bg-purple-500 flex items-center justify-center">
-                      <span className="text-white text-xs">⚡</span>
+                <div className="mt-4 border-t pt-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                      <span className="text-xs text-white">⚡</span>
                     </div>
                     <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
                       LLM Eval
@@ -1361,17 +1620,21 @@ function TraceMessage({
                   <div className="space-y-2">
                     {/* Judge Response */}
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                      <div className="mb-1 text-xs font-medium text-muted-foreground">
                         Judge Response:
                       </div>
-                      <div className="bg-purple-50 dark:bg-purple-950/20 rounded-md p-2 border border-purple-200 dark:border-purple-800">
-                        <span className={cn(
-                          "text-sm font-semibold",
-                          geniusFeedbackScore.value === 1 
-                            ? "text-green-600 dark:text-green-400" 
-                            : "text-red-600 dark:text-red-400"
-                        )}>
-                          {geniusFeedbackScore.value === 1 ? "CORRECT" : "INCORRECT"}
+                      <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
+                        <span
+                          className={cn(
+                            "text-sm font-semibold",
+                            geniusFeedbackScore.value === 1
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-red-600 dark:text-red-400",
+                          )}
+                        >
+                          {geniusFeedbackScore.value === 1
+                            ? "CORRECT"
+                            : "INCORRECT"}
                         </span>
                       </div>
                     </div>
@@ -1379,10 +1642,10 @@ function TraceMessage({
                     {/* Judgement Reason */}
                     {geniusFeedbackScore.comment && (
                       <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                        <div className="mb-1 text-xs font-medium text-muted-foreground">
                           Judgement Reason:
                         </div>
-                        <div className="bg-purple-50 dark:bg-purple-950/20 rounded-md p-3 border border-purple-200 dark:border-purple-800">
+                        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
                           <div className="text-sm leading-relaxed">
                             {geniusFeedbackScore.comment}
                           </div>
