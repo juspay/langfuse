@@ -60,6 +60,9 @@ export default function JuspayDashboard() {
   const [filterCorrect, setFilterCorrect] = useState(false);
   const [filterIncorrect, setFilterIncorrect] = useState(false);
   const [hideUnknownUser, setHideUnknownUser] = useState(true);
+  const [sessionPage, setSessionPage] = useState(0);
+  const [allSessions, setAllSessions] = useState<any[]>([]);
+  const [hasMoreSessions, setHasMoreSessions] = useState(true);
 
   // Sync selectedSessionId with URL on mount and when URL changes
   React.useEffect(() => {
@@ -92,13 +95,47 @@ export default function JuspayDashboard() {
     {
       projectId,
       filter: [],
-      page: 0,
-      limit: 100,
+      page: sessionPage,
+      limit: 50,
       orderBy: { column: "createdAt", order: "DESC" },
     },
     {
-      enabled: !!projectId,
+      enabled: !!projectId && hasMoreSessions,
     },
+  );
+
+  // Accumulate sessions from pagination (like scores pattern)
+  React.useEffect(() => {
+    if (sessions.data?.sessions) {
+      const newSessions = sessions.data.sessions;
+
+      if (sessionPage === 0) {
+        setAllSessions(newSessions);
+      } else {
+        setAllSessions((prev) => [...prev, ...newSessions]);
+      }
+
+      if (newSessions.length < 50) {
+        setHasMoreSessions(false);
+      } else {
+        setSessionPage((prev) => prev + 1);
+      }
+    }
+  }, [sessions.data?.sessions, sessionPage]);
+
+  // Reset session pagination when needed
+  React.useEffect(() => {
+    setAllSessions([]);
+    setSessionPage(0);
+    setHasMoreSessions(true);
+  }, [projectId]);
+
+  // Create wrapper for sessions
+  const allSessionsData = React.useMemo(
+    () => ({
+      sessions: allSessions,
+    }),
+    [allSessions],
   );
 
   // Fetch all tags for filtering (no limit issues!)
@@ -390,7 +427,7 @@ export default function JuspayDashboard() {
   );
 
   const filteredSessions = React.useMemo(() => {
-    return sessions.data?.sessions.filter((session) => {
+    return allSessionsData.sessions.filter((session) => {
       // Date range filter
       const sessionDate = new Date(session.createdAt);
       const matchesDateRange =
@@ -401,7 +438,7 @@ export default function JuspayDashboard() {
       // Search filter
       const matchesSearch = searchQuery
         ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          session.userIds?.some((uid) =>
+          session.userIds?.some((uid: string) =>
             uid.toLowerCase().includes(searchQuery.toLowerCase()),
           )
         : true;
@@ -412,7 +449,7 @@ export default function JuspayDashboard() {
       // Hide sessions where user_id contains "@juspay" (internal users)
       // Show only actual merchant/customer sessions
       if (showOnlyMerchant) {
-        const hasJuspayUser = session.userIds?.some((uid) =>
+        const hasJuspayUser = session.userIds?.some((uid: string) =>
           uid.toLowerCase().includes("@juspay"),
         );
         if (hasJuspayUser) return false;
@@ -455,7 +492,7 @@ export default function JuspayDashboard() {
       return true;
     });
   }, [
-    sessions.data?.sessions,
+    allSessionsData.sessions,
     dateRange,
     searchQuery,
     showOnlyMerchant,
@@ -722,7 +759,9 @@ export default function JuspayDashboard() {
                   <div className="mb-2 flex items-center gap-2">
                     <span className="text-blue-600 dark:text-blue-400">📊</span>
                     <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                      {filteredSessions?.length || 0}
+                      {filteredSessions && filteredSessions.length > 100
+                        ? "100+"
+                        : filteredSessions?.length || 0}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       sessions
@@ -868,7 +907,7 @@ export default function JuspayDashboard() {
 
               <div className="text-xs text-muted-foreground">
                 Showing: {filteredSessions?.length || 0} of{" "}
-                {sessions.data?.sessions.length || 0} sessions
+                {allSessionsData.sessions.length || 0} sessions
               </div>
             </div>
 
