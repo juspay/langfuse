@@ -43,26 +43,76 @@ import { toast } from "sonner";
 export default function JuspayDashboard() {
   const router = useRouter();
   const projectId = router.query.projectId as string;
+
+  // Initialize states from URL parameters
   const sessionIdFromUrl = router.query.sessionId as string | undefined;
+  const dateFromUrl = router.query.dateFrom as string | undefined;
+  const dateToUrl = router.query.dateTo as string | undefined;
+  const merchantFilterUrl = router.query.merchantOnly as string | undefined;
+  const tagFilterUrl = router.query.tag as string | undefined;
+  const correctFilterUrl = router.query.correct as string | undefined;
+  const incorrectFilterUrl = router.query.incorrect as string | undefined;
+  const hideUnknownUrl = router.query.hideUnknown as string | undefined;
+
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     sessionIdFromUrl || null,
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedToolCall, setSelectedToolCall] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(true);
-  const [showOnlyMerchant, setShowOnlyMerchant] = useState(false);
-  const [selectedTag, setSelectedTag] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(new Date().setHours(0, 0, 0, 0)),
-    to: new Date(new Date().setHours(23, 59, 59, 999)),
+  const [showOnlyMerchant, setShowOnlyMerchant] = useState(
+    merchantFilterUrl === "true",
+  );
+  const [selectedTag, setSelectedTag] = useState<string>(tagFilterUrl || "all");
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(() => {
+    // Initialize from URL or default to today
+    const from = dateFromUrl
+      ? new Date(dateFromUrl)
+      : new Date(new Date().setHours(0, 0, 0, 0));
+    const to = dateToUrl
+      ? new Date(dateToUrl)
+      : new Date(new Date().setHours(23, 59, 59, 999));
+    return { from, to };
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [filterCorrect, setFilterCorrect] = useState(false);
-  const [filterIncorrect, setFilterIncorrect] = useState(false);
-  const [hideUnknownUser, setHideUnknownUser] = useState(true);
+  const [filterCorrect, setFilterCorrect] = useState(
+    correctFilterUrl === "true",
+  );
+  const [filterIncorrect, setFilterIncorrect] = useState(
+    incorrectFilterUrl === "true",
+  );
+  const [hideUnknownUser, setHideUnknownUser] = useState(
+    hideUnknownUrl !== "false", // Default to true if not specified
+  );
   const [sessionPage, setSessionPage] = useState(0);
-  const [allSessions, setAllSessions] = useState<any[]>([]);
-  const [hasMoreSessions, setHasMoreSessions] = useState(true);
+
+  // Sync all filters with URL
+  const updateUrlWithFilters = React.useCallback(
+    (updates: Record<string, any>) => {
+      const newQuery = { ...router.query, ...updates };
+
+      // Remove undefined/null values
+      Object.keys(newQuery).forEach((key) => {
+        if (
+          newQuery[key] === undefined ||
+          newQuery[key] === null ||
+          newQuery[key] === ""
+        ) {
+          delete newQuery[key];
+        }
+      });
+
+      router.push(
+        {
+          pathname: router.pathname,
+          query: newQuery,
+        },
+        undefined,
+        { shallow: true },
+      );
+    },
+    [router],
+  );
 
   // Sync selectedSessionId with URL on mount and when URL changes
   React.useEffect(() => {
@@ -70,6 +120,31 @@ export default function JuspayDashboard() {
       setSelectedSessionId(sessionIdFromUrl);
     }
   }, [sessionIdFromUrl]);
+
+  // Sync date range with URL
+  React.useEffect(() => {
+    updateUrlWithFilters({
+      dateFrom: dateRange.from.toISOString(),
+      dateTo: dateRange.to.toISOString(),
+    });
+  }, [dateRange.from, dateRange.to]);
+
+  // Sync other filters with URL
+  React.useEffect(() => {
+    updateUrlWithFilters({
+      merchantOnly: showOnlyMerchant ? "true" : undefined,
+      tag: selectedTag !== "all" ? selectedTag : undefined,
+      correct: filterCorrect ? "true" : undefined,
+      incorrect: filterIncorrect ? "true" : undefined,
+      hideUnknown: hideUnknownUser ? undefined : "false", // Only add if false
+    });
+  }, [
+    showOnlyMerchant,
+    selectedTag,
+    filterCorrect,
+    filterIncorrect,
+    hideUnknownUser,
+  ]);
 
   // Clear selected tool call when session changes
   React.useEffect(() => {
@@ -80,23 +155,32 @@ export default function JuspayDashboard() {
   // Update URL when session is selected
   const handleSessionSelect = (sessionId: string) => {
     setSelectedSessionId(sessionId);
-    router.push(
-      {
-        pathname: router.pathname,
-        query: { ...router.query, sessionId },
-      },
-      undefined,
-      { shallow: true },
-    );
+    updateUrlWithFilters({ sessionId });
   };
 
-  // Fetch sessions
+  // Fetch sessions based on date range with pagination
+  const [allSessions, setAllSessions] = useState<any[]>([]);
+  const [hasMoreSessions, setHasMoreSessions] = useState(true);
+
   const sessions = api.sessions.all.useQuery(
     {
       projectId,
-      filter: [],
+      filter: [
+        {
+          column: "createdAt",
+          type: "datetime",
+          operator: ">=",
+          value: dateRange.from,
+        },
+        {
+          column: "createdAt",
+          type: "datetime",
+          operator: "<=",
+          value: dateRange.to,
+        },
+      ],
       page: sessionPage,
-      limit: 50,
+      limit: 99,
       orderBy: { column: "createdAt", order: "DESC" },
     },
     {
@@ -104,7 +188,7 @@ export default function JuspayDashboard() {
     },
   );
 
-  // Accumulate sessions from pagination (like scores pattern)
+  // Accumulate sessions from pagination
   React.useEffect(() => {
     if (sessions.data?.sessions) {
       const newSessions = sessions.data.sessions;
@@ -123,12 +207,12 @@ export default function JuspayDashboard() {
     }
   }, [sessions.data?.sessions, sessionPage]);
 
-  // Reset session pagination when needed
+  // Reset session pagination when date range changes
   React.useEffect(() => {
     setAllSessions([]);
     setSessionPage(0);
     setHasMoreSessions(true);
-  }, [projectId]);
+  }, [projectId, dateRange.from, dateRange.to]);
 
   // Create wrapper for sessions
   const allSessionsData = React.useMemo(
@@ -154,8 +238,7 @@ export default function JuspayDashboard() {
     },
   );
 
-  // Fetch traces for all sessions to get scores (within date range)
-  // Using pagination to fetch all traces without hitting limits
+  // Fetch traces for all sessions within date range
   const [allTraces, setAllTraces] = React.useState<any[]>([]);
   const [currentPage, setCurrentPage] = React.useState(0);
   const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
@@ -184,7 +267,7 @@ export default function JuspayDashboard() {
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && !!sessions.data?.sessions && hasMoreTraces,
+      enabled: !!projectId && !!allSessions.length && hasMoreTraces,
     },
   );
 
@@ -218,7 +301,7 @@ export default function JuspayDashboard() {
     setHasMoreTraces(true);
   }, [dateRange.from, dateRange.to]);
 
-  // Create a wrapper object that mimics the original structure
+  // Create a wrapper object
   const allSessionsTracesData = React.useMemo(
     () => ({
       traces: allTraces,
@@ -428,13 +511,6 @@ export default function JuspayDashboard() {
 
   const filteredSessions = React.useMemo(() => {
     return allSessionsData.sessions.filter((session) => {
-      // Date range filter
-      const sessionDate = new Date(session.createdAt);
-      const matchesDateRange =
-        sessionDate >= dateRange.from && sessionDate <= dateRange.to;
-
-      if (!matchesDateRange) return false;
-
       // Search filter
       const matchesSearch = searchQuery
         ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -493,7 +569,6 @@ export default function JuspayDashboard() {
     });
   }, [
     allSessionsData.sessions,
-    dateRange,
     searchQuery,
     showOnlyMerchant,
     selectedTag,
@@ -832,7 +907,7 @@ export default function JuspayDashboard() {
                       <span className="text-sm">Show only merchant data</span>
                     </label>
 
-                    {/* Tag Filter - Using Shadcn Select for controlled dropdown direction */}
+                    {/* Tag Filter */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
                         Filter by Agent Name
