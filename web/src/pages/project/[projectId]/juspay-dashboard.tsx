@@ -119,31 +119,66 @@ export default function JuspayDashboard() {
     if (sessionIdFromUrl && sessionIdFromUrl !== selectedSessionId) {
       setSelectedSessionId(sessionIdFromUrl);
     }
-  }, [sessionIdFromUrl]);
+  }, [sessionIdFromUrl, selectedSessionId]);
 
-  // Sync date range with URL
+  // Sync date range with URL - only when user changes it
   React.useEffect(() => {
-    updateUrlWithFilters({
-      dateFrom: dateRange.from.toISOString(),
-      dateTo: dateRange.to.toISOString(),
-    });
-  }, [dateRange.from, dateRange.to]);
+    const currentDateFrom = router.query.dateFrom as string | undefined;
+    const currentDateTo = router.query.dateTo as string | undefined;
+    const newDateFrom = dateRange.from.toISOString();
+    const newDateTo = dateRange.to.toISOString();
+    
+    // Only update if values actually changed
+    if (currentDateFrom !== newDateFrom || currentDateTo !== newDateTo) {
+      updateUrlWithFilters({
+        dateFrom: newDateFrom,
+        dateTo: newDateTo,
+      });
+    }
+  }, [dateRange.from, dateRange.to, router.query.dateFrom, router.query.dateTo, updateUrlWithFilters]);
 
-  // Sync other filters with URL
+  // Sync other filters with URL - only when user changes them
   React.useEffect(() => {
-    updateUrlWithFilters({
-      merchantOnly: showOnlyMerchant ? "true" : undefined,
-      tag: selectedTag !== "all" ? selectedTag : undefined,
-      correct: filterCorrect ? "true" : undefined,
-      incorrect: filterIncorrect ? "true" : undefined,
-      hideUnknown: hideUnknownUser ? undefined : "false", // Only add if false
-    });
+    const currentMerchantOnly = router.query.merchantOnly as string | undefined;
+    const currentTag = router.query.tag as string | undefined;
+    const currentCorrect = router.query.correct as string | undefined;
+    const currentIncorrect = router.query.incorrect as string | undefined;
+    const currentHideUnknown = router.query.hideUnknown as string | undefined;
+    
+    const newMerchantOnly = showOnlyMerchant ? "true" : undefined;
+    const newTag = selectedTag !== "all" ? selectedTag : undefined;
+    const newCorrect = filterCorrect ? "true" : undefined;
+    const newIncorrect = filterIncorrect ? "true" : undefined;
+    const newHideUnknown = hideUnknownUser ? undefined : "false";
+    
+    // Only update if values actually changed
+    if (
+      currentMerchantOnly !== newMerchantOnly ||
+      currentTag !== newTag ||
+      currentCorrect !== newCorrect ||
+      currentIncorrect !== newIncorrect ||
+      currentHideUnknown !== newHideUnknown
+    ) {
+      updateUrlWithFilters({
+        merchantOnly: newMerchantOnly,
+        tag: newTag,
+        correct: newCorrect,
+        incorrect: newIncorrect,
+        hideUnknown: newHideUnknown,
+      });
+    }
   }, [
     showOnlyMerchant,
     selectedTag,
     filterCorrect,
     filterIncorrect,
     hideUnknownUser,
+    router.query.merchantOnly,
+    router.query.tag,
+    router.query.correct,
+    router.query.incorrect,
+    router.query.hideUnknown,
+    updateUrlWithFilters,
   ]);
 
   // Clear selected tool call when session changes
