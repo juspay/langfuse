@@ -39,20 +39,129 @@ import { Calendar as CalendarComponent } from "@/src/components/ui/calendar";
 import { MarkdownJsonView } from "@/src/components/ui/MarkdownJsonView";
 import { PrettyJsonView } from "@/src/components/ui/PrettyJsonView";
 import { toast } from "sonner";
+import { useTableDateRange } from "@/src/hooks/useTableDateRange";
+import { toAbsoluteTimeRange } from "@/src/utils/date-range-utils";
 
 export default function JuspayDashboard() {
   const router = useRouter();
   const projectId = router.query.projectId as string;
 
-  // Initialize states from URL parameters
+  React.useEffect(() => {
+    console.log("🚀 PRODUCTION DEBUG - JuspayDashboard loaded:", {
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      userAgent:
+        typeof window !== "undefined" ? window.navigator.userAgent : "SSR",
+      url: typeof window !== "undefined" ? window.location.href : "SSR",
+    });
+  }, []);
+
+  // Use the same date range approach as traces page for consistency
+  const { timeRange, setTimeRange } = useTableDateRange(projectId, {
+    defaultRelativeAggregation: "last1Day",
+  });
+
+  // Convert timeRange to absolute date range for compatibility
+  const tableDateRange = React.useMemo(() => {
+    return toAbsoluteTimeRange(timeRange) ?? undefined;
+  }, [timeRange]);
+
+  // Use tableDateRange as our dateRange - wrapped in useMemo for performance
+  const dateRange = React.useMemo(() => {
+    return (
+      tableDateRange || {
+        from: new Date(new Date().setHours(0, 0, 0, 0)),
+        to: new Date(new Date().setHours(23, 59, 59, 999)),
+      }
+    );
+  }, [tableDateRange]);
+
+  // Filter persistence using localStorage (same approach as before but simpler)
+  const filterStorageKey = `juspay-dashboard-filters-${projectId}`;
+
+  // Get other URL parameters (not date range - that's handled by useTableDateRange)
   const sessionIdFromUrl = router.query.sessionId as string | undefined;
-  const dateFromUrl = router.query.dateFrom as string | undefined;
-  const dateToUrl = router.query.dateTo as string | undefined;
   const merchantFilterUrl = router.query.merchantOnly as string | undefined;
   const tagFilterUrl = router.query.tag as string | undefined;
   const correctFilterUrl = router.query.correct as string | undefined;
   const incorrectFilterUrl = router.query.incorrect as string | undefined;
   const hideUnknownUrl = router.query.hideUnknown as string | undefined;
+
+  // Check if URL has any filter parameters (shared link)
+  const hasUrlFilters = !!(
+    merchantFilterUrl ||
+    tagFilterUrl ||
+    correctFilterUrl ||
+    incorrectFilterUrl ||
+    hideUnknownUrl
+  );
+
+  // Load filters from localStorage
+  const loadFiltersFromStorage = () => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem(filterStorageKey);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Save filters to localStorage
+  const saveFiltersToStorage = React.useCallback(
+    (filters: any) => {
+      if (typeof window === "undefined") return;
+      try {
+        localStorage.setItem(filterStorageKey, JSON.stringify(filters));
+      } catch (error) {
+        console.error("Failed to save filters:", error);
+      }
+    },
+    [filterStorageKey],
+  );
+
+  // Update URL for sharing (but don't trigger navigation)
+  const updateUrlForSharing = React.useCallback((filters: any) => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+
+    // Add filter parameters (dateRange is handled by useTableDateRange)
+    if (filters.showOnlyMerchant) {
+      params.set("merchantOnly", "true");
+    } else {
+      params.delete("merchantOnly");
+    }
+
+    if (filters.selectedTag && filters.selectedTag !== "all") {
+      params.set("tag", filters.selectedTag);
+    } else {
+      params.delete("tag");
+    }
+
+    if (filters.filterCorrect) {
+      params.set("correct", "true");
+    } else {
+      params.delete("correct");
+    }
+
+    if (filters.filterIncorrect) {
+      params.set("incorrect", "true");
+    } else {
+      params.delete("incorrect");
+    }
+
+    if (!filters.hideUnknownUser) {
+      params.set("hideUnknown", "false");
+    } else {
+      params.delete("hideUnknown");
+    }
+
+    // Update URL without navigation
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, "", newUrl);
+    console.log("🔗 URL updated for sharing:", newUrl);
+  }, []);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     sessionIdFromUrl || null,
@@ -60,112 +169,94 @@ export default function JuspayDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedToolCall, setSelectedToolCall] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(true);
-  const [showOnlyMerchant, setShowOnlyMerchant] = useState(
-    merchantFilterUrl === "true",
-  );
-  const [selectedTag, setSelectedTag] = useState<string>(tagFilterUrl || "all");
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(() => {
-    // Initialize from URL or default to today
-    const from = dateFromUrl
-      ? new Date(dateFromUrl)
-      : new Date(new Date().setHours(0, 0, 0, 0));
-    const to = dateToUrl
-      ? new Date(dateToUrl)
-      : new Date(new Date().setHours(23, 59, 59, 999));
-    return { from, to };
+
+  const [showOnlyMerchant, setShowOnlyMerchant] = useState(() => {
+    if (hasUrlFilters && merchantFilterUrl !== undefined)
+      return merchantFilterUrl === "true";
+    const stored = loadFiltersFromStorage();
+    return stored?.showOnlyMerchant ?? false;
   });
+
+  const [selectedTag, setSelectedTag] = useState<string>(() => {
+    if (hasUrlFilters && tagFilterUrl !== undefined) return tagFilterUrl;
+    const stored = loadFiltersFromStorage();
+    return stored?.selectedTag ?? "all";
+  });
+
+  const [filterCorrect, setFilterCorrect] = useState(() => {
+    if (hasUrlFilters && correctFilterUrl !== undefined)
+      return correctFilterUrl === "true";
+    const stored = loadFiltersFromStorage();
+    return stored?.filterCorrect ?? false;
+  });
+
+  const [filterIncorrect, setFilterIncorrect] = useState(() => {
+    if (hasUrlFilters && incorrectFilterUrl !== undefined)
+      return incorrectFilterUrl === "true";
+    const stored = loadFiltersFromStorage();
+    return stored?.filterIncorrect ?? false;
+  });
+
+  const [hideUnknownUser, setHideUnknownUser] = useState(() => {
+    if (hasUrlFilters && hideUnknownUrl !== undefined)
+      return hideUnknownUrl !== "false";
+    const stored = loadFiltersFromStorage();
+    return stored?.hideUnknownUser ?? true;
+  });
+
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [filterCorrect, setFilterCorrect] = useState(
-    correctFilterUrl === "true",
-  );
-  const [filterIncorrect, setFilterIncorrect] = useState(
-    incorrectFilterUrl === "true",
-  );
-  const [hideUnknownUser, setHideUnknownUser] = useState(
-    hideUnknownUrl !== "false", // Default to true if not specified
-  );
   const [sessionPage, setSessionPage] = useState(0);
 
-  // Sync all filters with URL
-  const updateUrlWithFilters = React.useCallback(
-    (updates: Record<string, any>) => {
-      const newQuery = { ...router.query, ...updates };
-
-      // Remove undefined/null values
-      Object.keys(newQuery).forEach((key) => {
-        if (
-          newQuery[key] === undefined ||
-          newQuery[key] === null ||
-          newQuery[key] === ""
-        ) {
-          delete newQuery[key];
-        }
+  const handleDateRangeChange = React.useCallback(
+    (newDateRange: { from: Date; to: Date }) => {
+      console.log("📅 Date range changed:", {
+        from: newDateRange.from.toISOString(),
+        to: newDateRange.to.toISOString(),
+        previousFrom: dateRange.from.toISOString(),
+        previousTo: dateRange.to.toISOString(),
       });
-
-      router.push(
-        {
-          pathname: router.pathname,
-          query: newQuery,
-        },
-        undefined,
-        { shallow: true },
-      );
+      // Use the same approach as traces page
+      setTimeRange({ from: newDateRange.from, to: newDateRange.to });
     },
-    [router],
+    [dateRange, setTimeRange],
   );
 
-  // Sync selectedSessionId with URL on mount and when URL changes
-  React.useEffect(() => {
-    if (sessionIdFromUrl && sessionIdFromUrl !== selectedSessionId) {
-      setSelectedSessionId(sessionIdFromUrl);
-    }
-  }, [sessionIdFromUrl, selectedSessionId]);
+  const handleShowOnlyMerchantChange = (value: boolean) => {
+    setShowOnlyMerchant(value);
+  };
 
-  // Sync date range with URL - only when user changes it
-  React.useEffect(() => {
-    const currentDateFrom = router.query.dateFrom as string | undefined;
-    const currentDateTo = router.query.dateTo as string | undefined;
-    const newDateFrom = dateRange.from.toISOString();
-    const newDateTo = dateRange.to.toISOString();
-    
-    // Only update if values actually changed
-    if (currentDateFrom !== newDateFrom || currentDateTo !== newDateTo) {
-      updateUrlWithFilters({
-        dateFrom: newDateFrom,
-        dateTo: newDateTo,
-      });
-    }
-  }, [dateRange.from, dateRange.to, router.query.dateFrom, router.query.dateTo, updateUrlWithFilters]);
+  const handleSelectedTagChange = (value: string) => {
+    setSelectedTag(value);
+  };
 
-  // Sync other filters with URL - only when user changes them
+  const handleFilterCorrectChange = (value: boolean) => {
+    setFilterCorrect(value);
+  };
+
+  const handleFilterIncorrectChange = (value: boolean) => {
+    setFilterIncorrect(value);
+  };
+
+  const handleHideUnknownUserChange = (value: boolean) => {
+    setHideUnknownUser(value);
+  };
+
+  // Save filters to localStorage AND update URL for sharing whenever they change
   React.useEffect(() => {
-    const currentMerchantOnly = router.query.merchantOnly as string | undefined;
-    const currentTag = router.query.tag as string | undefined;
-    const currentCorrect = router.query.correct as string | undefined;
-    const currentIncorrect = router.query.incorrect as string | undefined;
-    const currentHideUnknown = router.query.hideUnknown as string | undefined;
-    
-    const newMerchantOnly = showOnlyMerchant ? "true" : undefined;
-    const newTag = selectedTag !== "all" ? selectedTag : undefined;
-    const newCorrect = filterCorrect ? "true" : undefined;
-    const newIncorrect = filterIncorrect ? "true" : undefined;
-    const newHideUnknown = hideUnknownUser ? undefined : "false";
-    
-    // Only update if values actually changed
-    if (
-      currentMerchantOnly !== newMerchantOnly ||
-      currentTag !== newTag ||
-      currentCorrect !== newCorrect ||
-      currentIncorrect !== newIncorrect ||
-      currentHideUnknown !== newHideUnknown
-    ) {
-      updateUrlWithFilters({
-        merchantOnly: newMerchantOnly,
-        tag: newTag,
-        correct: newCorrect,
-        incorrect: newIncorrect,
-        hideUnknown: newHideUnknown,
-      });
+    const filters = {
+      showOnlyMerchant,
+      selectedTag,
+      filterCorrect,
+      filterIncorrect,
+      hideUnknownUser,
+    };
+
+    // Save to localStorage for personal persistence
+    saveFiltersToStorage(filters);
+
+    // Update URL for sharing (only after initial load)
+    if (router.isReady) {
+      updateUrlForSharing(filters);
     }
   }, [
     showOnlyMerchant,
@@ -173,12 +264,9 @@ export default function JuspayDashboard() {
     filterCorrect,
     filterIncorrect,
     hideUnknownUser,
-    router.query.merchantOnly,
-    router.query.tag,
-    router.query.correct,
-    router.query.incorrect,
-    router.query.hideUnknown,
-    updateUrlWithFilters,
+    router.isReady,
+    updateUrlForSharing,
+    saveFiltersToStorage,
   ]);
 
   // Clear selected tool call when session changes
@@ -187,10 +275,18 @@ export default function JuspayDashboard() {
     setSelectedTraceForDetails(null);
   }, [selectedSessionId]);
 
-  // Update URL when session is selected
+  // Session selection handler with URL update for sharing
   const handleSessionSelect = (sessionId: string) => {
     setSelectedSessionId(sessionId);
-    updateUrlWithFilters({ sessionId });
+
+    // Update URL to include selected session for sharing
+    if (typeof window !== "undefined" && router.isReady) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("sessionId", sessionId);
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, "", newUrl);
+      console.log("🔗 Session URL updated for sharing:", newUrl);
+    }
   };
 
   // Fetch sessions based on date range with pagination
@@ -219,7 +315,7 @@ export default function JuspayDashboard() {
       orderBy: { column: "createdAt", order: "DESC" },
     },
     {
-      enabled: !!projectId && hasMoreSessions,
+      enabled: !!projectId,
     },
   );
 
@@ -227,20 +323,27 @@ export default function JuspayDashboard() {
   React.useEffect(() => {
     if (sessions.data?.sessions) {
       const newSessions = sessions.data.sessions;
-
       if (sessionPage === 0) {
+        // First page - replace all sessions
         setAllSessions(newSessions);
       } else {
+        // Subsequent pages - append to existing sessions
         setAllSessions((prev) => [...prev, ...newSessions]);
       }
 
-      if (newSessions.length < 50) {
+      // Check if we have more sessions to load
+      if (newSessions.length < 99) {
         setHasMoreSessions(false);
-      } else {
-        setSessionPage((prev) => prev + 1);
       }
     }
   }, [sessions.data?.sessions, sessionPage]);
+
+  // Auto-load more sessions when there are more available
+  React.useEffect(() => {
+    if (hasMoreSessions && !sessions.isLoading && sessions.data?.sessions) {
+      setSessionPage((prev) => prev + 1);
+    }
+  }, [hasMoreSessions, sessions.isLoading, sessions.data?.sessions]);
 
   // Reset session pagination when date range changes
   React.useEffect(() => {
@@ -256,6 +359,14 @@ export default function JuspayDashboard() {
     }),
     [allSessions],
   );
+
+  // Reset when date range changes
+  React.useEffect(() => {
+    console.log("🔄 SESSIONS - Date range changed, will refetch:", {
+      from: dateRange.from.toISOString(),
+      to: dateRange.to.toISOString(),
+    });
+  }, [dateRange.from, dateRange.to]);
 
   // Fetch all tags for filtering (no limit issues!)
   const traceFilterOptions = api.traces.filterOptions.useQuery(
@@ -273,7 +384,7 @@ export default function JuspayDashboard() {
     },
   );
 
-  // Fetch traces for all sessions within date range
+  // Fetch traces for all sessions within date range with pagination
   const [allTraces, setAllTraces] = React.useState<any[]>([]);
   const [currentPage, setCurrentPage] = React.useState(0);
   const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
@@ -298,7 +409,7 @@ export default function JuspayDashboard() {
       searchQuery: null,
       searchType: [],
       page: currentPage,
-      limit: 100, // API maximum limit
+      limit: 99,
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
@@ -310,26 +421,34 @@ export default function JuspayDashboard() {
   React.useEffect(() => {
     if (allSessionsTraces.data?.traces) {
       const newTraces = allSessionsTraces.data.traces;
-
       if (currentPage === 0) {
-        // First page - replace all traces
         setAllTraces(newTraces);
       } else {
-        // Subsequent pages - append traces
         setAllTraces((prev) => [...prev, ...newTraces]);
       }
 
-      // Check if there are more traces to fetch
-      if (newTraces.length < 100) {
+      if (newTraces.length < 99) {
         setHasMoreTraces(false);
-      } else {
-        // Fetch next page
-        setCurrentPage((prev) => prev + 1);
       }
     }
   }, [allSessionsTraces.data?.traces, currentPage]);
 
-  // Reset pagination when date range changes
+  // Auto-load more traces when there are more available
+  React.useEffect(() => {
+    if (
+      hasMoreTraces &&
+      !allSessionsTraces.isLoading &&
+      allSessionsTraces.data?.traces
+    ) {
+      setCurrentPage((prev) => prev + 1);
+    }
+  }, [
+    hasMoreTraces,
+    allSessionsTraces.isLoading,
+    allSessionsTraces.data?.traces,
+  ]);
+
+  // Reset trace pagination when date range changes
   React.useEffect(() => {
     setAllTraces([]);
     setCurrentPage(0);
@@ -344,9 +463,9 @@ export default function JuspayDashboard() {
     [allTraces],
   );
 
-  // Fetch scores using pagination (same pattern as traces)
+  // Fetch scores with pagination
   const [allScores, setAllScores] = React.useState<any[]>([]);
-  const [currentScorePage, setCurrentScorePage] = React.useState(0);
+  const [scoresPage, setScoresPage] = React.useState(0);
   const [hasMoreScores, setHasMoreScores] = React.useState(true);
 
   const scoresQuery = api.scores.all.useQuery(
@@ -360,12 +479,12 @@ export default function JuspayDashboard() {
           value: "genius-feedback",
         },
       ],
-      page: currentScorePage,
-      limit: 100, // API maximum limit
+      page: scoresPage,
+      limit: 99,
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && allTraces.length > 0 && hasMoreScores,
+      enabled: !!projectId && !!allTraces.length && hasMoreScores,
     },
   );
 
@@ -373,29 +492,33 @@ export default function JuspayDashboard() {
   React.useEffect(() => {
     if (scoresQuery.data?.scores) {
       const newScores = scoresQuery.data.scores;
-
-      if (currentScorePage === 0) {
+      if (scoresPage === 0) {
         setAllScores(newScores);
       } else {
         setAllScores((prev) => [...prev, ...newScores]);
       }
 
-      if (newScores.length < 100) {
+      if (newScores.length < 99) {
         setHasMoreScores(false);
-      } else {
-        setCurrentScorePage((prev) => prev + 1);
       }
     }
-  }, [scoresQuery.data?.scores, currentScorePage]);
+  }, [scoresQuery.data?.scores, scoresPage]);
 
-  // Reset score pagination when traces change
+  // Auto-load more scores when there are more available
+  React.useEffect(() => {
+    if (hasMoreScores && !scoresQuery.isLoading && scoresQuery.data?.scores) {
+      setScoresPage((prev) => prev + 1);
+    }
+  }, [hasMoreScores, scoresQuery.isLoading, scoresQuery.data?.scores]);
+
+  // Reset scores pagination when date range changes
   React.useEffect(() => {
     setAllScores([]);
-    setCurrentScorePage(0);
+    setScoresPage(0);
     setHasMoreScores(true);
-  }, [allTraces.length]);
+  }, [dateRange.from, dateRange.to]);
 
-  // Create wrapper for scores
+  // Simple scores data wrapper
   const allScoresData = React.useMemo(
     () => ({
       scores: allScores,
@@ -695,7 +818,7 @@ export default function JuspayDashboard() {
   return (
     <Page
       headerProps={{
-        title: "Session Analytics v2",
+        title: "Session Analytics V2",
         help: {
           description:
             "Session-based conversation view with detailed trace analysis.",
@@ -743,10 +866,11 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            setDateRange({
+                            const newRange = {
                               from: new Date(today.setHours(0, 0, 0, 0)),
                               to: new Date(today.setHours(23, 59, 59, 999)),
-                            });
+                            };
+                            handleDateRangeChange(newRange);
                           }}
                         >
                           Today
@@ -758,10 +882,11 @@ export default function JuspayDashboard() {
                           onClick={() => {
                             const yesterday = new Date();
                             yesterday.setDate(yesterday.getDate() - 1);
-                            setDateRange({
+                            const newRange = {
                               from: new Date(yesterday.setHours(0, 0, 0, 0)),
                               to: new Date(yesterday.setHours(23, 59, 59, 999)),
-                            });
+                            };
+                            handleDateRangeChange(newRange);
                           }}
                         >
                           Yesterday
@@ -774,10 +899,11 @@ export default function JuspayDashboard() {
                             const today = new Date();
                             const last7Days = new Date();
                             last7Days.setDate(today.getDate() - 7);
-                            setDateRange({
+                            const newRange = {
                               from: new Date(last7Days.setHours(0, 0, 0, 0)),
                               to: new Date(today.setHours(23, 59, 59, 999)),
-                            });
+                            };
+                            handleDateRangeChange(newRange);
                           }}
                         >
                           Last 7 days
@@ -790,10 +916,11 @@ export default function JuspayDashboard() {
                             const today = new Date();
                             const last30Days = new Date();
                             last30Days.setDate(today.getDate() - 30);
-                            setDateRange({
+                            const newRange = {
                               from: new Date(last30Days.setHours(0, 0, 0, 0)),
                               to: new Date(today.setHours(23, 59, 59, 999)),
-                            });
+                            };
+                            handleDateRangeChange(newRange);
                           }}
                         >
                           Last 30 days
@@ -806,10 +933,11 @@ export default function JuspayDashboard() {
                             const today = new Date();
                             const last90Days = new Date();
                             last90Days.setDate(today.getDate() - 90);
-                            setDateRange({
+                            const newRange = {
                               from: new Date(last90Days.setHours(0, 0, 0, 0)),
                               to: new Date(today.setHours(23, 59, 59, 999)),
-                            });
+                            };
+                            handleDateRangeChange(newRange);
                           }}
                         >
                           Last 90 days
@@ -835,7 +963,7 @@ export default function JuspayDashboard() {
                               }}
                               onSelect={(range: any) => {
                                 if (range?.from) {
-                                  setDateRange({
+                                  const newRange = {
                                     from: new Date(
                                       range.from.setHours(0, 0, 0, 0),
                                     ),
@@ -846,7 +974,8 @@ export default function JuspayDashboard() {
                                       : new Date(
                                           range.from.setHours(23, 59, 59, 999),
                                         ),
-                                  });
+                                  };
+                                  handleDateRangeChange(newRange);
                                 }
                               }}
                               numberOfMonths={2}
@@ -936,7 +1065,9 @@ export default function JuspayDashboard() {
                       <input
                         type="checkbox"
                         checked={showOnlyMerchant}
-                        onChange={(e) => setShowOnlyMerchant(e.target.checked)}
+                        onChange={(e) =>
+                          handleShowOnlyMerchantChange(e.target.checked)
+                        }
                         className="rounded"
                       />
                       <span className="text-sm">Show only merchant data</span>
@@ -949,7 +1080,7 @@ export default function JuspayDashboard() {
                       </label>
                       <Select
                         value={selectedTag}
-                        onValueChange={setSelectedTag}
+                        onValueChange={handleSelectedTagChange}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="All Tags" />
@@ -975,7 +1106,9 @@ export default function JuspayDashboard() {
                           <input
                             type="checkbox"
                             checked={filterCorrect}
-                            onChange={(e) => setFilterCorrect(e.target.checked)}
+                            onChange={(e) =>
+                              handleFilterCorrectChange(e.target.checked)
+                            }
                             className="rounded"
                           />
                           <CheckCircle2 className="h-3 w-3 text-green-600" />
@@ -988,7 +1121,7 @@ export default function JuspayDashboard() {
                             type="checkbox"
                             checked={filterIncorrect}
                             onChange={(e) =>
-                              setFilterIncorrect(e.target.checked)
+                              handleFilterIncorrectChange(e.target.checked)
                             }
                             className="rounded"
                           />
@@ -1002,7 +1135,7 @@ export default function JuspayDashboard() {
                             type="checkbox"
                             checked={hideUnknownUser}
                             onChange={(e) =>
-                              setHideUnknownUser(e.target.checked)
+                              handleHideUnknownUserChange(e.target.checked)
                             }
                             className="rounded"
                           />
@@ -1116,7 +1249,7 @@ export default function JuspayDashboard() {
                   </div>
                 ) : (
                   <div className="mx-auto max-w-4xl space-y-4 pb-8">
-                    {sessionTraces.data?.traces.map((trace, index) => {
+                    {sessionTraces.data?.traces.map((trace, _index) => {
                       const traceMetric = traceMetrics.data?.find(
                         (m) => m.id === trace.id,
                       );
