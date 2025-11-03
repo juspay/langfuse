@@ -21,6 +21,9 @@ import {
   XCircle,
   Clock,
   Calendar,
+  GripVertical,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "@/src/utils/tailwind";
 import { Skeleton } from "@/src/components/ui/skeleton";
@@ -68,12 +71,15 @@ export default function JuspayDashboard() {
 
   // Use tableDateRange as our dateRange - wrapped in useMemo for performance
   const dateRange = React.useMemo(() => {
-    return (
-      tableDateRange || {
-        from: new Date(new Date().setHours(0, 0, 0, 0)),
-        to: new Date(new Date().setHours(23, 59, 59, 999)),
-      }
-    );
+    if (tableDateRange) {
+      return tableDateRange;
+    }
+    // Create fallback date range without mutation
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
+      to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+    };
   }, [tableDateRange]);
 
   // Filter persistence using localStorage (same approach as before but simpler)
@@ -206,6 +212,12 @@ export default function JuspayDashboard() {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sessionPage, setSessionPage] = useState(0);
+  
+  // Resizable panels state
+  const [rightPanelWidth, setRightPanelWidth] = useState(450);
+  const [isResizing, setIsResizing] = useState<'right' | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileRightPanelOpen, setIsMobileRightPanelOpen] = useState(false);
 
   const handleDateRangeChange = React.useCallback(
     (newDateRange: { from: Date; to: Date }) => {
@@ -737,7 +749,7 @@ export default function JuspayDashboard() {
     sessionEvaluationMap,
   ]);
 
-  // Calculate statistics based on queries (traces) not sessions
+  // Calculate statistics based on filtered sessions and their traces
   const statistics = React.useMemo(() => {
     if (!allSessionsTracesData.traces.length) {
       return {
@@ -749,8 +761,57 @@ export default function JuspayDashboard() {
       };
     }
 
-    // Filter traces based on current filters (tag filter)
-    const filteredTraces = allSessionsTracesData.traces.filter((trace) => {
+    // Filter sessions for statistics
+    const sessionsForStats = allSessionsData.sessions.filter((session) => {
+      // Search filter
+      const matchesSearch = searchQuery
+        ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.userIds?.some((uid: string) =>
+            uid.toLowerCase().includes(searchQuery.toLowerCase()),
+          )
+        : true;
+
+      if (!matchesSearch) return false;
+
+      // Show only merchant data filter
+      if (showOnlyMerchant) {
+        const hasJuspayUser = session.userIds?.some((uid: string) =>
+          uid.toLowerCase().includes("@juspay"),
+        );
+        if (hasJuspayUser) return false;
+      }
+
+      // Tag filter
+      if (selectedTag !== "all") {
+        const sessionTags = sessionToTagsMap.get(session.id);
+        if (!sessionTags || !sessionTags.includes(selectedTag)) return false;
+      }
+
+      // Hide Unknown User filter
+      if (hideUnknownUser) {
+        const isUnknownUser =
+          !session.userIds ||
+          session.userIds.length === 0 ||
+          session.userIds[0] === "Unknown User";
+        if (isUnknownUser) return false;
+      }
+
+      // NOTE: We deliberately exclude filterCorrect and filterIncorrect here
+      // so statistics show overall numbers regardless of these filters
+
+      return true;
+    });
+
+    // Get session IDs from sessions for statistics
+    const sessionIdsForStats = new Set(sessionsForStats.map(session => session.id));
+
+    // Filter traces to only include those from sessions for statistics
+    const tracesForStats = allSessionsTracesData.traces.filter((trace) => {
+      // Only include traces from sessions for statistics
+      if (!trace.sessionId || !sessionIdsForStats.has(trace.sessionId)) {
+        return false;
+      }
+
       // Apply tag filter if selected
       if (selectedTag !== "all") {
         if (!trace.tags || !trace.tags.includes(selectedTag)) return false;
@@ -758,17 +819,17 @@ export default function JuspayDashboard() {
       return true;
     });
 
-    // Total queries = filtered traces
-    const totalQueries = filteredTraces.length;
+    // Total queries = traces for statistics
+    const totalQueries = tracesForStats.length;
 
-    // Count correct/incorrect queries from genius-feedback scores (only for filtered traces)
+    // Count correct/incorrect queries from genius-feedback scores (only for traces for statistics)
     let correctQueries = 0;
     let incorrectQueries = 0;
 
     if (allScoresData.scores.length > 0) {
       allScoresData.scores.forEach((score: any) => {
-        // Check if this score belongs to a filtered trace
-        const trace = filteredTraces.find((t) => t.id === score.traceId);
+        // Check if this score belongs to a trace for statistics
+        const trace = tracesForStats.find((t) => t.id === score.traceId);
         if (trace) {
           if (score.value === 1) {
             correctQueries++;
@@ -797,8 +858,13 @@ export default function JuspayDashboard() {
   }, [
     allScoresData.scores,
     allSessionsTracesData.traces,
+    allSessionsData.sessions,
     filteredSessions,
+    searchQuery,
+    showOnlyMerchant,
     selectedTag,
+    hideUnknownUser,
+    sessionToTagsMap,
   ]);
 
   // Extract agent name from the first trace's tags (since we can't access input from list query)
@@ -815,6 +881,101 @@ export default function JuspayDashboard() {
     return firstTrace.tags[0];
   }, [sessionTraces.data?.traces]);
 
+  // Auto-scroll to selected session only when needed (page refresh or URL navigation)
+  const [hasAutoScrolled, setHasAutoScrolled] = React.useState(false);
+  
+  React.useEffect(() => {
+    if (selectedSessionId && filteredSessions.length > 0 && !sessions.isLoading && !hasAutoScrolled && sessionIdFromUrl) {
+      const timer = setTimeout(() => {
+        const selectedElement = document.querySelector(`[data-session-id="${selectedSessionId}"]`);
+        if (selectedElement) {
+          // Check if element is already visible
+          const rect = selectedElement.getBoundingClientRect();
+          const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+          
+          // Only scroll if not visible
+          if (!isVisible) {
+            selectedElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+            });
+          }
+          setHasAutoScrolled(true);
+        }
+      }, 200);
+
+      return () => clearTimeout(timer);
+    }
+  }, [selectedSessionId, filteredSessions.length, sessions.isLoading, hasAutoScrolled, sessionIdFromUrl]);
+
+  // Reset auto-scroll flag when session changes manually (not from URL)
+  React.useEffect(() => {
+    if (!sessionIdFromUrl) {
+      setHasAutoScrolled(false);
+    }
+  }, [sessionIdFromUrl]);
+
+  // Mouse event handlers for resizing (right panel only)
+  const [dragStartX, setDragStartX] = React.useState(0);
+  const [dragStartWidth, setDragStartWidth] = React.useState(0);
+
+  const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing('right');
+    setDragStartX(e.clientX);
+    setDragStartWidth(rightPanelWidth);
+  }, [rightPanelWidth]);
+
+  const handleMouseMove = React.useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+
+    const deltaX = e.clientX - dragStartX;
+
+    // For right panel, subtract the delta from the starting width
+    const newWidth = Math.max(300, Math.min(800, dragStartWidth - deltaX));
+    setRightPanelWidth(newWidth);
+  }, [isResizing, dragStartX, dragStartWidth]);
+
+  const handleMouseUp = React.useCallback(() => {
+    setIsResizing(null);
+  }, []);
+
+  // Add mouse event listeners
+  React.useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isResizing, handleMouseMove, handleMouseUp]);
+
+  // Responsive breakpoints
+  const [windowWidth, setWindowWidth] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    if (typeof window !== 'undefined') {
+      setWindowWidth(window.innerWidth);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
+
+  const isMobile = windowWidth < 768;
+  const isTablet = windowWidth >= 768 && windowWidth < 1024;
+  const isDesktop = windowWidth >= 1024;
+
   return (
     <Page
       headerProps={{
@@ -825,28 +986,85 @@ export default function JuspayDashboard() {
         },
       }}
     >
-      <div className="flex h-[calc(100vh-4rem)]">
+      <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
+        {/* Mobile Menu Button - Only show when sidebar is closed */}
+        {isMobile && !isMobileMenuOpen && (
+          <div className="absolute top-6 left-4 z-50 lg:hidden shadow-lg">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Mobile Overlay */}
+        {isMobile && isMobileMenuOpen && (
+          <div 
+            className="absolute inset-0 z-30 bg-black/50"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
         {/* Left Sidebar - Sessions List */}
-        <div className="w-84 border-r bg-background">
+        <div 
+          className={cn(
+            "border-r bg-background transition-all duration-300",
+            isMobile 
+              ? cn(
+                  "absolute inset-y-0 left-0 z-40 w-80 transform",
+                  isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+                )
+              : isTablet 
+                ? "w-72" 
+                : "w-84"
+          )}
+          style={undefined}
+        >
           <div className="flex h-full flex-col">
-            {/* Date Range Filter */}
-            <div className="border-b p-4">
+            {/* Mobile Close Button - Inside sidebar */}
+            {isMobile && (
+              <div className="flex items-center justify-between border-b p-3 flex-shrink-0">
+                <h2 className="text-lg font-semibold">Filters</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {/* Date Range Filter - Always visible */}
+            <div className={cn(
+              "border-b flex-shrink-0",
+              isMobile ? "pt-8 px-3 pb-4" : "p-4"
+            )}>
               <Collapsible
                 open={showDatePicker}
                 onOpenChange={setShowDatePicker}
               >
                 <CollapsibleTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start"
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    <div className="flex flex-col items-start text-left">
-                      <span className="text-xs text-muted-foreground">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "w-full justify-start h-auto py-3 px-3",
+                        isMobile ? "min-h-[6rem]" : "min-h-[3rem]"
+                      )}
+                    >
+                    <Calendar className="mr-2 h-4 w-4 flex-shrink-0" />
+                    <div className="flex flex-col items-start text-left flex-1 min-w-0 gap-1">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                         Select date range
                       </span>
-                      <span className="text-xs font-medium">
+                      <span className={cn(
+                        "font-medium w-full leading-tight",
+                        isMobile ? "text-xs break-words" : "text-xs break-words"
+                      )}>
                         {dateRange.from.toLocaleDateString()} -{" "}
                         {dateRange.to.toLocaleDateString()}
                       </span>
@@ -867,8 +1085,8 @@ export default function JuspayDashboard() {
                           onClick={() => {
                             const today = new Date();
                             const newRange = {
-                              from: new Date(today.setHours(0, 0, 0, 0)),
-                              to: new Date(today.setHours(23, 59, 59, 999)),
+                              from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
+                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -880,11 +1098,11 @@ export default function JuspayDashboard() {
                           size="sm"
                           className="w-full justify-start text-xs"
                           onClick={() => {
-                            const yesterday = new Date();
-                            yesterday.setDate(yesterday.getDate() - 1);
+                            const today = new Date();
+                            const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
                             const newRange = {
-                              from: new Date(yesterday.setHours(0, 0, 0, 0)),
-                              to: new Date(yesterday.setHours(23, 59, 59, 999)),
+                              from: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0),
+                              to: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -897,11 +1115,10 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last7Days = new Date();
-                            last7Days.setDate(today.getDate() - 7);
+                            const last7Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
                             const newRange = {
-                              from: new Date(last7Days.setHours(0, 0, 0, 0)),
-                              to: new Date(today.setHours(23, 59, 59, 999)),
+                              from: new Date(last7Days.getFullYear(), last7Days.getMonth(), last7Days.getDate(), 0, 0, 0, 0),
+                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -914,11 +1131,10 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last30Days = new Date();
-                            last30Days.setDate(today.getDate() - 30);
+                            const last30Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
                             const newRange = {
-                              from: new Date(last30Days.setHours(0, 0, 0, 0)),
-                              to: new Date(today.setHours(23, 59, 59, 999)),
+                              from: new Date(last30Days.getFullYear(), last30Days.getMonth(), last30Days.getDate(), 0, 0, 0, 0),
+                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -931,11 +1147,10 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last90Days = new Date();
-                            last90Days.setDate(today.getDate() - 90);
+                            const last90Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90);
                             const newRange = {
-                              from: new Date(last90Days.setHours(0, 0, 0, 0)),
-                              to: new Date(today.setHours(23, 59, 59, 999)),
+                              from: new Date(last90Days.getFullYear(), last90Days.getMonth(), last90Days.getDate(), 0, 0, 0, 0),
+                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -963,17 +1178,12 @@ export default function JuspayDashboard() {
                               }}
                               onSelect={(range: any) => {
                                 if (range?.from) {
+                                  const fromDate = new Date(range.from);
+                                  const toDate = range.to ? new Date(range.to) : new Date(range.from);
+                                  
                                   const newRange = {
-                                    from: new Date(
-                                      range.from.setHours(0, 0, 0, 0),
-                                    ),
-                                    to: range.to
-                                      ? new Date(
-                                          range.to.setHours(23, 59, 59, 999),
-                                        )
-                                      : new Date(
-                                          range.from.setHours(23, 59, 59, 999),
-                                        ),
+                                    from: new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0, 0),
+                                    to: new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999),
                                   };
                                   handleDateRangeChange(newRange);
                                 }
@@ -990,7 +1200,10 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Statistics Section */}
-            <div className="border-b p-4">
+            <div className={cn(
+              "border-b flex-shrink-0",
+              isMobile ? "px-3 py-3" : "p-4"
+            )}>
               {sessions.isLoading ? (
                 <Skeleton className="h-16 w-full" />
               ) : (
@@ -1041,7 +1254,10 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Search and Filters */}
-            <div className="space-y-3 border-b p-4">
+            <div className={cn(
+              "space-y-3 border-b flex-shrink-0",
+              isMobile ? "px-3 py-3" : "p-4"
+            )}>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -1178,6 +1394,7 @@ export default function JuspayDashboard() {
                     return (
                       <Card
                         key={session.id}
+                        data-session-id={session.id}
                         className={cn(
                           "mb-3 cursor-pointer p-3 transition-colors hover:bg-accent",
                           selectedSessionId === session.id &&
@@ -1216,8 +1433,14 @@ export default function JuspayDashboard() {
           </div>
         </div>
 
+
         {/* Middle Section - Conversation Flow */}
-        <div className="flex flex-1 flex-col">
+        <div 
+          className={cn(
+            "flex flex-1 flex-col",
+            isMobile && isMobileMenuOpen && "opacity-50"
+          )}
+        >
           {selectedSessionId ? (
             <>
               {/* Session Header */}
@@ -1266,6 +1489,10 @@ export default function JuspayDashboard() {
                               ...trace,
                               metric: traceMetric,
                             });
+                            // Auto-open right panel on mobile when tool call is selected
+                            if (isMobile) {
+                              setIsMobileRightPanelOpen(true);
+                            }
                           }}
                         />
                       );
@@ -1284,13 +1511,58 @@ export default function JuspayDashboard() {
           )}
         </div>
 
+        {/* Right Resizer Handle */}
+        {isDesktop && !isMobile && (
+          <div
+            className="w-1 bg-border hover:bg-primary cursor-col-resize transition-colors"
+            onMouseDown={handleMouseDown}
+          >
+            <div className="flex h-full items-center justify-center">
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Right Panel Overlay */}
+        {isMobile && isMobileRightPanelOpen && (
+          <div 
+            className="absolute inset-0 z-50 bg-black/50"
+            onClick={() => setIsMobileRightPanelOpen(false)}
+          />
+        )}
+
         {/* Right Sidebar - Tool Call Details */}
-        <div className="w-[450px] border-l bg-background">
+        {(!isMobile || isMobileRightPanelOpen) && (
+          <div 
+            className={cn(
+              "border-l bg-background",
+              isMobile 
+                ? cn(
+                    "absolute inset-y-0 right-0 z-50 w-80 transform transition-transform duration-300",
+                    isMobileRightPanelOpen ? "translate-x-0" : "translate-x-full"
+                  )
+                : isTablet 
+                  ? "w-80" 
+                  : "w-[450px]"
+            )}
+            style={isDesktop ? { width: `${rightPanelWidth}px` } : undefined}
+          >
           <div className="flex h-full flex-col">
             <div className="border-b p-4">
-              <h3 className="font-semibold">
-                {selectedToolCall ? "Tool Call Details" : "Response Details"}
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">
+                  {selectedToolCall ? "Tool Call Details" : "Response Details"}
+                </h3>
+                {isMobile && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsMobileRightPanelOpen(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
 
             <ScrollArea className="flex-1 p-4">
@@ -1365,6 +1637,7 @@ export default function JuspayDashboard() {
             </ScrollArea>
           </div>
         </div>
+        )}
       </div>
     </Page>
   );
