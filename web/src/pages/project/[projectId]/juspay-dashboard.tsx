@@ -64,6 +64,31 @@ export default function JuspayDashboard() {
     defaultRelativeAggregation: "last1Day",
   });
 
+  // Auto-update URL with default date range on initial load
+  React.useEffect(() => {
+    if (router.isReady && timeRange && typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Check if there's no existing dateRange parameter in URL
+      if (!params.has('dateRange')) {
+        // Convert timeRange to the format expected by the URL
+        const absoluteRange = toAbsoluteTimeRange(timeRange);
+        if (absoluteRange) {
+          const fromTimestamp = absoluteRange.from.getTime();
+          const toTimestamp = absoluteRange.to.getTime();
+          const dateRangeParam = `${fromTimestamp}-${toTimestamp}`;
+          
+          params.set('dateRange', dateRangeParam);
+          
+          // Update URL without navigation
+          const newUrl = `${window.location.pathname}?${params.toString()}`;
+          window.history.replaceState({}, "", newUrl);
+          console.log("🔗 Auto-updated URL with default date range:", newUrl);
+        }
+      }
+    }
+  }, [router.isReady, timeRange]);
+
   // Convert timeRange to absolute date range for compatibility
   const tableDateRange = React.useMemo(() => {
     return toAbsoluteTimeRange(timeRange) ?? undefined;
@@ -88,18 +113,24 @@ export default function JuspayDashboard() {
   // Get other URL parameters (not date range - that's handled by useTableDateRange)
   const sessionIdFromUrl = router.query.sessionId as string | undefined;
   const merchantFilterUrl = router.query.merchantOnly as string | undefined;
+  const teamFilterUrl = router.query.teamOnly as string | undefined;
+  const juspayOthersFilterUrl = router.query.juspayOthersOnly as string | undefined;
   const tagFilterUrl = router.query.tag as string | undefined;
   const correctFilterUrl = router.query.correct as string | undefined;
   const incorrectFilterUrl = router.query.incorrect as string | undefined;
   const hideUnknownUrl = router.query.hideUnknown as string | undefined;
+  const teamEmailsFromUrl = router.query.teamEmails as string | undefined;
 
   // Check if URL has any filter parameters (shared link)
   const hasUrlFilters = !!(
     merchantFilterUrl ||
+    teamFilterUrl ||
+    juspayOthersFilterUrl ||
     tagFilterUrl ||
     correctFilterUrl ||
     incorrectFilterUrl ||
-    hideUnknownUrl
+    hideUnknownUrl ||
+    teamEmailsFromUrl
   );
 
   // Load filters from localStorage
@@ -139,6 +170,18 @@ export default function JuspayDashboard() {
       params.delete("merchantOnly");
     }
 
+    if (filters.showOnlyTeam) {
+      params.set("teamOnly", "true");
+    } else {
+      params.delete("teamOnly");
+    }
+
+    if (filters.showOnlyJuspayOthers) {
+      params.set("juspayOthersOnly", "true");
+    } else {
+      params.delete("juspayOthersOnly");
+    }
+
     if (filters.selectedTag && filters.selectedTag !== "all") {
       params.set("tag", filters.selectedTag);
     } else {
@@ -163,6 +206,13 @@ export default function JuspayDashboard() {
       params.delete("hideUnknown");
     }
 
+    // Add team emails to URL for sharing
+    if (filters.teamEmails && filters.teamEmails.length > 0) {
+      params.set("teamEmails", encodeURIComponent(JSON.stringify(filters.teamEmails)));
+    } else {
+      params.delete("teamEmails");
+    }
+
     // Update URL without navigation
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, "", newUrl);
@@ -175,12 +225,27 @@ export default function JuspayDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedToolCall, setSelectedToolCall] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(true);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const [showOnlyMerchant, setShowOnlyMerchant] = useState(() => {
     if (hasUrlFilters && merchantFilterUrl !== undefined)
       return merchantFilterUrl === "true";
     const stored = loadFiltersFromStorage();
     return stored?.showOnlyMerchant ?? false;
+  });
+
+  const [showOnlyTeam, setShowOnlyTeam] = useState(() => {
+    if (hasUrlFilters && teamFilterUrl !== undefined)
+      return teamFilterUrl === "true";
+    const stored = loadFiltersFromStorage();
+    return stored?.showOnlyTeam ?? false;
+  });
+
+  const [showOnlyJuspayOthers, setShowOnlyJuspayOthers] = useState(() => {
+    if (hasUrlFilters && juspayOthersFilterUrl !== undefined)
+      return juspayOthersFilterUrl === "true";
+    const stored = loadFiltersFromStorage();
+    return stored?.showOnlyJuspayOthers ?? false;
   });
 
   const [selectedTag, setSelectedTag] = useState<string>(() => {
@@ -209,6 +274,22 @@ export default function JuspayDashboard() {
     const stored = loadFiltersFromStorage();
     return stored?.hideUnknownUser ?? true;
   });
+
+  // Team whitelist state
+  const [teamEmails, setTeamEmails] = useState<string[]>(() => {
+    // If URL has team emails, use those (for shared links)
+    if (hasUrlFilters && teamEmailsFromUrl !== undefined) {
+      try {
+        return JSON.parse(decodeURIComponent(teamEmailsFromUrl));
+      } catch {
+        return [];
+      }
+    }
+    // Otherwise use localStorage
+    const stored = loadFiltersFromStorage();
+    return stored?.teamEmails ?? [];
+  });
+  const [newEmailInput, setNewEmailInput] = useState("");
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sessionPage, setSessionPage] = useState(0);
@@ -253,14 +334,25 @@ export default function JuspayDashboard() {
     setHideUnknownUser(value);
   };
 
+  const handleShowOnlyTeamChange = (value: boolean) => {
+    setShowOnlyTeam(value);
+  };
+
+  const handleShowOnlyJuspayOthersChange = (value: boolean) => {
+    setShowOnlyJuspayOthers(value);
+  };
+
   // Save filters to localStorage AND update URL for sharing whenever they change
   React.useEffect(() => {
     const filters = {
       showOnlyMerchant,
+      showOnlyTeam,
+      showOnlyJuspayOthers,
       selectedTag,
       filterCorrect,
       filterIncorrect,
       hideUnknownUser,
+      teamEmails,
     };
 
     // Save to localStorage for personal persistence
@@ -272,10 +364,13 @@ export default function JuspayDashboard() {
     }
   }, [
     showOnlyMerchant,
+    showOnlyTeam,
+    showOnlyJuspayOthers,
     selectedTag,
     filterCorrect,
     filterIncorrect,
     hideUnknownUser,
+    teamEmails,
     router.isReady,
     updateUrlForSharing,
     saveFiltersToStorage,
@@ -691,14 +786,66 @@ export default function JuspayDashboard() {
 
       if (!matchesSearch) return false;
 
-      // Show only merchant data filter
-      // Hide sessions where user_id contains "@juspay" (internal users)
-      // Show only actual merchant/customer sessions
-      if (showOnlyMerchant) {
-        const hasJuspayUser = session.userIds?.some((uid: string) =>
-          uid.toLowerCase().includes("@juspay"),
-        );
-        if (hasJuspayUser) return false;
+      // Helper function to categorize user for filtering
+      const categorizeUserForFilter = (userIds: string[] | undefined) => {
+        if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
+          return "unknown";
+        }
+        
+        const userId = userIds[0];
+        
+        // Check if user is in team whitelist - more flexible matching
+        if (teamEmails.some(email => {
+          const emailLower = email.toLowerCase().trim();
+          const userIdLower = userId.toLowerCase().trim();
+          
+          // Try exact match first
+          if (userIdLower === emailLower) return true;
+          
+          // Try contains match (user ID contains the email)
+          if (userIdLower.includes(emailLower)) return true;
+          
+          // Try email contains user ID (for partial email matches)
+          if (emailLower.includes(userIdLower)) return true;
+          
+          // Try domain matching if email has @ symbol
+          if (emailLower.includes('@')) {
+            const emailDomain = emailLower.split('@')[1];
+            const emailUsername = emailLower.split('@')[0];
+            
+            // Check if user ID matches username part
+            if (userIdLower === emailUsername) return true;
+            
+            // Check if user ID contains username
+            if (userIdLower.includes(emailUsername)) return true;
+          }
+          
+          return false;
+        })) {
+          return "team";
+        }
+        
+        // Check if user is juspay internal (contains @juspay)
+        if (userId.toLowerCase().includes("@juspay")) {
+          return "juspay-genius-merchant";
+        }
+        
+        // Otherwise it's a merchant
+        return "merchant";
+      };
+
+      const userCategory = categorizeUserForFilter(session.userIds);
+
+      // Category filters - if any are checked, show only those categories
+      if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
+        const matchesSelectedCategories = 
+          (showOnlyMerchant && userCategory === "merchant") ||
+          (showOnlyTeam && userCategory === "team") ||
+          (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
+        
+        if (!matchesSelectedCategories) {
+          return false;
+        }
       }
 
       // Tag filter
@@ -741,25 +888,79 @@ export default function JuspayDashboard() {
     allSessionsData.sessions,
     searchQuery,
     showOnlyMerchant,
+    showOnlyTeam,
+    showOnlyJuspayOthers,
     selectedTag,
     filterCorrect,
     filterIncorrect,
     hideUnknownUser,
     sessionToTagsMap,
     sessionEvaluationMap,
+    teamEmails,
   ]);
 
-  // Calculate statistics based on filtered sessions and their traces
+  // Enhanced statistics with three categories
   const statistics = React.useMemo(() => {
     if (!allSessionsTracesData.traces.length) {
       return {
         totalQueries: 0,
+        merchantQueries: 0,
+        geniusTeamQueries: 0,
+        juspayGeniusMerchantQueries: 0,
         correctQueries: 0,
         incorrectQueries: 0,
         correctPercentage: 0,
         totalSessions: 0,
       };
     }
+
+    // Helper function to categorize user
+    const categorizeUser = (userIds: string[] | undefined) => {
+      if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
+        return "unknown";
+      }
+      
+      const userId = userIds[0];
+      
+      // Check if user is in team whitelist - more flexible matching
+      if (teamEmails.some(email => {
+        const emailLower = email.toLowerCase().trim();
+        const userIdLower = userId.toLowerCase().trim();
+        
+        // Try exact match first
+        if (userIdLower === emailLower) return true;
+        
+        // Try contains match (user ID contains the email)
+        if (userIdLower.includes(emailLower)) return true;
+        
+        // Try email contains user ID (for partial email matches)
+        if (emailLower.includes(userIdLower)) return true;
+        
+        // Try domain matching if email has @ symbol
+        if (emailLower.includes('@')) {
+          const emailDomain = emailLower.split('@')[1];
+          const emailUsername = emailLower.split('@')[0];
+          
+          // Check if user ID matches username part
+          if (userIdLower === emailUsername) return true;
+          
+          // Check if user ID contains username
+          if (userIdLower.includes(emailUsername)) return true;
+        }
+        
+        return false;
+      })) {
+        return "team";
+      }
+      
+      // Check if user is juspay internal (contains @juspay)
+      if (userId.toLowerCase().includes("@juspay")) {
+        return "juspay-genius-merchant";
+      }
+      
+      // Otherwise it's a merchant
+      return "merchant";
+    };
 
     // Filter sessions for statistics
     const sessionsForStats = allSessionsData.sessions.filter((session) => {
@@ -773,12 +974,66 @@ export default function JuspayDashboard() {
 
       if (!matchesSearch) return false;
 
-      // Show only merchant data filter
-      if (showOnlyMerchant) {
-        const hasJuspayUser = session.userIds?.some((uid: string) =>
-          uid.toLowerCase().includes("@juspay"),
-        );
-        if (hasJuspayUser) return false;
+      // Helper function to categorize user for statistics filtering
+      const categorizeUserForStats = (userIds: string[] | undefined) => {
+        if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
+          return "unknown";
+        }
+        
+        const userId = userIds[0];
+        
+        // Check if user is in team whitelist - more flexible matching
+        if (teamEmails.some(email => {
+          const emailLower = email.toLowerCase().trim();
+          const userIdLower = userId.toLowerCase().trim();
+          
+          // Try exact match first
+          if (userIdLower === emailLower) return true;
+          
+          // Try contains match (user ID contains the email)
+          if (userIdLower.includes(emailLower)) return true;
+          
+          // Try email contains user ID (for partial email matches)
+          if (emailLower.includes(userIdLower)) return true;
+          
+          // Try domain matching if email has @ symbol
+          if (emailLower.includes('@')) {
+            const emailDomain = emailLower.split('@')[1];
+            const emailUsername = emailLower.split('@')[0];
+            
+            // Check if user ID matches username part
+            if (userIdLower === emailUsername) return true;
+            
+            // Check if user ID contains username
+            if (userIdLower.includes(emailUsername)) return true;
+          }
+          
+          return false;
+        })) {
+          return "team";
+        }
+        
+        // Check if user is juspay internal (contains @juspay)
+        if (userId.toLowerCase().includes("@juspay")) {
+          return "juspay-genius-merchant";
+        }
+        
+        // Otherwise it's a merchant
+        return "merchant";
+      };
+
+      const userCategory = categorizeUserForStats(session.userIds);
+
+      // Category filters - if any are checked, show only those categories
+      if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
+        const matchesSelectedCategories = 
+          (showOnlyMerchant && userCategory === "merchant") ||
+          (showOnlyTeam && userCategory === "team") ||
+          (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
+        
+        if (!matchesSelectedCategories) {
+          return false;
+        }
       }
 
       // Tag filter
@@ -789,11 +1044,8 @@ export default function JuspayDashboard() {
 
       // Hide Unknown User filter
       if (hideUnknownUser) {
-        const isUnknownUser =
-          !session.userIds ||
-          session.userIds.length === 0 ||
-          session.userIds[0] === "Unknown User";
-        if (isUnknownUser) return false;
+        const userCategory = categorizeUser(session.userIds);
+        if (userCategory === "unknown") return false;
       }
 
       // NOTE: We deliberately exclude filterCorrect and filterIncorrect here
@@ -819,10 +1071,33 @@ export default function JuspayDashboard() {
       return true;
     });
 
+    // Categorize queries by user type
+    let merchantQueries = 0;
+    let geniusTeamQueries = 0;
+    let juspayGeniusMerchantQueries = 0;
+
+    tracesForStats.forEach((trace) => {
+      const session = allSessionsData.sessions.find(s => s.id === trace.sessionId);
+      if (session) {
+        const userCategory = categorizeUser(session.userIds);
+        switch (userCategory) {
+          case "merchant":
+            merchantQueries++;
+            break;
+          case "team":
+            geniusTeamQueries++;
+            break;
+          case "juspay-genius-merchant":
+            juspayGeniusMerchantQueries++;
+            break;
+        }
+      }
+    });
+
     // Total queries = traces for statistics
     const totalQueries = tracesForStats.length;
 
-    // Count correct/incorrect queries from genius-feedback scores (only for traces for statistics)
+    // Count correct/incorrect queries from genius-feedback scores
     let correctQueries = 0;
     let incorrectQueries = 0;
 
@@ -850,6 +1125,9 @@ export default function JuspayDashboard() {
 
     return {
       totalQueries,
+      merchantQueries,
+      geniusTeamQueries,
+      juspayGeniusMerchantQueries,
       correctQueries,
       incorrectQueries,
       correctPercentage,
@@ -862,9 +1140,12 @@ export default function JuspayDashboard() {
     filteredSessions,
     searchQuery,
     showOnlyMerchant,
+    showOnlyTeam,
+    showOnlyJuspayOthers,
     selectedTag,
     hideUnknownUser,
     sessionToTagsMap,
+    teamEmails,
   ]);
 
   // Extract agent name from the first trace's tags (since we can't access input from list query)
@@ -1199,54 +1480,156 @@ export default function JuspayDashboard() {
               </Collapsible>
             </div>
 
-            {/* Statistics Section */}
+            {/* Enhanced Statistics Section */}
             <div className={cn(
               "border-b flex-shrink-0",
-              isMobile ? "px-3 py-3" : "p-4"
+              isMobile ? "px-3 py-4" : "p-4"
             )}>
               {sessions.isLoading ? (
-                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-32 w-full" />
               ) : (
-                <div className="rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 p-3 dark:from-blue-950/20 dark:to-purple-950/20">
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="text-blue-600 dark:text-blue-400">📊</span>
-                    <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                      {filteredSessions && filteredSessions.length > 100
-                        ? "100+"
-                        : filteredSessions?.length || 0}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      sessions
-                    </span>
+                <div className="space-y-3">
+                  {/* Main Stats Card */}
+                  <div className="rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 p-4 dark:from-blue-950/20 dark:to-purple-950/20">
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="text-blue-600 dark:text-blue-400">📊</span>
+                      <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                        {filteredSessions && filteredSessions.length > 100
+                          ? "100+"
+                          : filteredSessions?.length || 0}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        sessions
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-red-600 dark:text-red-400">
+                          {statistics.incorrectQueries}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          incorrect
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">/</span>
+                        <span className="font-bold text-gray-600 dark:text-gray-400">
+                          {statistics.totalQueries}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          total
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-green-600 dark:text-green-400">
+                          ({statistics.correctPercentage}%
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          correct)
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-red-600 dark:text-red-400">
-                        {statistics.incorrectQueries}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        incorrect
-                      </span>
+                  {/* Query Categories - Now Clickable Filter Buttons */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Merchant Queries - Clickable */}
+                    <div 
+                      className={cn(
+                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
+                        showOnlyMerchant 
+                          ? "bg-green-100 border-green-500 ring-2 ring-green-200 dark:bg-green-900/40 dark:border-green-400" 
+                          : "bg-green-50 border-green-200 hover:bg-green-100 dark:bg-green-950/20 dark:border-green-800 dark:hover:bg-green-900/30"
+                      )}
+                      onClick={() => handleShowOnlyMerchantChange(!showOnlyMerchant)}
+                    >
+                      <div className={cn(
+                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
+                        statistics.merchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        statistics.merchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        "h-10 w-10 text-xs",
+                        showOnlyMerchant ? "bg-green-600" : "bg-green-500"
+                      )}>
+                        {statistics.merchantQueries > 9999 ? "9999+" : statistics.merchantQueries}
+                        {showOnlyMerchant && (
+                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-600 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs">✓</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className={cn(
+                        "text-xs font-medium",
+                        showOnlyMerchant ? "text-green-800 dark:text-green-300" : "text-green-700 dark:text-green-400"
+                      )}>
+                        Merchant
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">/</span>
-                      <span className="font-bold text-gray-600 dark:text-gray-400">
-                        {statistics.totalQueries}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        total
-                      </span>
+                    {/* Genius Team Queries - Clickable */}
+                    <div 
+                      className={cn(
+                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
+                        showOnlyTeam 
+                          ? "bg-blue-100 border-blue-500 ring-2 ring-blue-200 dark:bg-blue-900/40 dark:border-blue-400" 
+                          : "bg-blue-50 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/20 dark:border-blue-800 dark:hover:bg-blue-900/30"
+                      )}
+                      onClick={() => handleShowOnlyTeamChange(!showOnlyTeam)}
+                    >
+                      <div className={cn(
+                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
+                        statistics.geniusTeamQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        statistics.geniusTeamQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        "h-10 w-10 text-xs",
+                        showOnlyTeam ? "bg-blue-600" : "bg-blue-500"
+                      )}>
+                        {statistics.geniusTeamQueries > 9999 ? "9999+" : statistics.geniusTeamQueries}
+                        {showOnlyTeam && (
+                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-blue-600 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs">✓</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className={cn(
+                        "text-xs font-medium",
+                        showOnlyTeam ? "text-blue-800 dark:text-blue-300" : "text-blue-700 dark:text-blue-400"
+                      )}>
+                        Team
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-green-600 dark:text-green-400">
-                        ({statistics.correctPercentage}%
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        correct)
-                      </span>
+                    {/* Juspay-Genius-Merchant Queries - Clickable */}
+                    <div 
+                      className={cn(
+                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
+                        showOnlyJuspayOthers 
+                          ? "bg-purple-100 border-purple-500 ring-2 ring-purple-200 dark:bg-purple-900/40 dark:border-purple-400" 
+                          : "bg-purple-50 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/20 dark:border-purple-800 dark:hover:bg-purple-900/30"
+                      )}
+                      onClick={() => handleShowOnlyJuspayOthersChange(!showOnlyJuspayOthers)}
+                    >
+                      <div className={cn(
+                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
+                        statistics.juspayGeniusMerchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        statistics.juspayGeniusMerchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        "h-10 w-10 text-xs",
+                        showOnlyJuspayOthers ? "bg-purple-600" : "bg-purple-500"
+                      )}>
+                        {statistics.juspayGeniusMerchantQueries > 9999 ? "9999+" : statistics.juspayGeniusMerchantQueries}
+                        {showOnlyJuspayOthers && (
+                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-purple-600 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs">✓</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className={cn(
+                        "text-xs font-medium",
+                        showOnlyJuspayOthers ? "text-purple-800 dark:text-purple-300" : "text-purple-700 dark:text-purple-400"
+                      )}>
+                        Other
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1277,18 +1660,6 @@ export default function JuspayDashboard() {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-3">
                   <div className="space-y-3">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={showOnlyMerchant}
-                        onChange={(e) =>
-                          handleShowOnlyMerchantChange(e.target.checked)
-                        }
-                        className="rounded"
-                      />
-                      <span className="text-sm">Show only merchant data</span>
-                    </label>
-
                     {/* Tag Filter */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
@@ -1360,9 +1731,203 @@ export default function JuspayDashboard() {
                         </label>
                       </div>
                     </div>
+
+                    {/* Show More Filters Button */}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => setShowAdvancedFilters(true)}
+                    >
+                      <Filter className="mr-2 h-4 w-4" />
+                      Show More Filters
+                    </Button>
                   </div>
                 </CollapsibleContent>
               </Collapsible>
+
+              {/* Advanced Filters Overlay */}
+              {showAdvancedFilters && (
+                <>
+                  {/* Overlay Background */}
+                  <div 
+                    className="fixed inset-0 z-50 bg-black/50"
+                    onClick={() => setShowAdvancedFilters(false)}
+                  />
+                  
+                  {/* Advanced Filters Modal */}
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <Card className="w-full max-w-md bg-background shadow-lg">
+                      <div className="flex items-center justify-between border-b p-4">
+                        <h3 className="text-lg font-semibold">Advanced Filters</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowAdvancedFilters(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      <div className="p-4 space-y-4">
+                        {/* Team Email Selection with Dropdown */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                             Team Emails
+                          </label>
+                          <div className="space-y-2">
+                            {/* Email Dropdown with Search */}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className="w-full justify-between text-xs"
+                                  size="sm"
+                                >
+                                  <span>
+                                    {teamEmails.length > 0 
+                                      ? `${teamEmails.length} email(s) selected`
+                                      : "Select team emails..."
+                                    }
+                                  </span>
+                                  <Search className="ml-2 h-3 w-3" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-72 p-3" align="start">
+                                <div className="space-y-3">
+                                  <div className="text-sm font-medium">Select Team Members</div>
+                                  
+                                  {/* Search Input */}
+                                  <div className="relative">
+                                    <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                      placeholder="Search emails..."
+                                      value={newEmailInput}
+                                      onChange={(e) => setNewEmailInput(e.target.value)}
+                                      className="text-xs pl-7"
+                                    />
+                                  </div>
+
+                                  {/* Available Emails List */}
+                                  <ScrollArea className="h-32">
+                                    <div className="space-y-1">
+                                      {(() => {
+                                        // Get unique user emails from current date range
+                                        const uniqueEmails = new Set<string>();
+                                        allSessionsData.sessions.forEach(session => {
+                                          if (session.userIds && session.userIds.length > 0) {
+                                            const userId = session.userIds[0];
+                                            if (userId && 
+                                                userId !== "Unknown User" && 
+                                                (userId.includes("@") || userId.includes("."))) {
+                                              uniqueEmails.add(userId);
+                                            }
+                                          }
+                                        });
+
+                                        // Filter emails based on search
+                                        const filteredEmails = Array.from(uniqueEmails)
+                                          .filter(email => 
+                                            newEmailInput === "" || 
+                                            email.toLowerCase().includes(newEmailInput.toLowerCase())
+                                          )
+                                          .sort();
+
+                                        return filteredEmails.map((email) => (
+                                          <label 
+                                            key={email} 
+                                            className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-accent"
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={teamEmails.includes(email)}
+                                              onChange={(e) => {
+                                                if (e.target.checked) {
+                                                  setTeamEmails(prev => [...prev, email]);
+                                                } else {
+                                                  setTeamEmails(prev => prev.filter(e => e !== email));
+                                                }
+                                              }}
+                                              className="rounded"
+                                            />
+                                            <span className="text-xs truncate flex-1">{email}</span>
+                                          </label>
+                                        ));
+                                      })()}
+                                    </div>
+                                  </ScrollArea>
+
+
+                                  {/* Quick Actions */}
+                                  <div className="border-t pt-2 space-y-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="w-full justify-start text-xs"
+                                      onClick={() => {
+                                        // Select all emails from current date range
+                                        const uniqueEmails = new Set<string>();
+                                        allSessionsData.sessions.forEach(session => {
+                                          if (session.userIds && session.userIds.length > 0) {
+                                            const userId = session.userIds[0];
+                                            if (userId && 
+                                                userId !== "Unknown User" && 
+                                                (userId.includes("@") || userId.includes("."))) {
+                                              uniqueEmails.add(userId);
+                                            }
+                                          }
+                                        });
+                                        setTeamEmails(Array.from(uniqueEmails));
+                                      }}
+                                    >
+                                      Select All Emails
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="w-full justify-start text-xs"
+                                      onClick={() => setTeamEmails([])}
+                                    >
+                                      Clear All
+                                    </Button>
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+
+                            {/* Selected Emails Display */}
+                            {teamEmails.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {teamEmails.map((email, index) => (
+                                  <Badge
+                                    key={index}
+                                    variant="secondary"
+                                    className="text-xs cursor-pointer"
+                                    onClick={() => {
+                                      setTeamEmails(prev => prev.filter((_, i) => i !== index));
+                                    }}
+                                  >
+                                    {email} ×
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="border-t p-4">
+                        <Button 
+                          className="w-full"
+                          onClick={() => setShowAdvancedFilters(false)}
+                        >
+                          Apply Filters
+                        </Button>
+                      </div>
+                    </Card>
+                  </div>
+                </>
+              )}
 
               <div className="text-xs text-muted-foreground">
                 Showing: {filteredSessions?.length || 0} of{" "}
