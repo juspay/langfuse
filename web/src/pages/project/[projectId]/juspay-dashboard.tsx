@@ -94,18 +94,15 @@ export default function JuspayDashboard() {
     return toAbsoluteTimeRange(timeRange) ?? undefined;
   }, [timeRange]);
 
-  // Use tableDateRange as our dateRange - wrapped in useMemo for performance
-  const dateRange = React.useMemo(() => {
-    if (tableDateRange) {
-      return tableDateRange;
-    }
+  // Use tableDateRange as our dateRange
+  const dateRange = tableDateRange ?? (() => {
     // Create fallback date range without mutation
     const today = new Date();
     return {
       from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
       to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
     };
-  }, [tableDateRange]);
+  })();
 
   // Filter persistence using localStorage (same approach as before but simpler)
   const filterStorageKey = `juspay-dashboard-filters-${projectId}`;
@@ -305,13 +302,11 @@ export default function JuspayDashboard() {
       console.log("📅 Date range changed:", {
         from: newDateRange.from.toISOString(),
         to: newDateRange.to.toISOString(),
-        previousFrom: dateRange.from.toISOString(),
-        previousTo: dateRange.to.toISOString(),
       });
       // Use the same approach as traces page
       setTimeRange({ from: newDateRange.from, to: newDateRange.to });
     },
-    [dateRange, setTimeRange],
+    [setTimeRange],
   );
 
   const handleShowOnlyMerchantChange = (value: boolean) => {
@@ -1459,8 +1454,8 @@ export default function JuspayDashboard() {
                               }}
                               onSelect={(range: any) => {
                                 if (range?.from) {
-                                  const fromDate = new Date(range.from);
-                                  const toDate = range.to ? new Date(range.to) : new Date(range.from);
+                                  const fromDate = new Date(range.from.getTime());
+                                  const toDate = range.to ? new Date(range.to.getTime()) : new Date(range.from.getTime());
                                   
                                   const newRange = {
                                     from: new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0, 0),
