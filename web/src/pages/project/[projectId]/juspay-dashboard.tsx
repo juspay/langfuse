@@ -474,12 +474,14 @@ export default function JuspayDashboard() {
   const traceFilterOptions = api.traces.filterOptions.useQuery(
     {
       projectId,
-      timestampFilter: {
-        column: "timestamp",
-        type: "datetime",
-        operator: ">=",
-        value: dateRange.from,
-      },
+      timestampFilter: [
+        {
+          column: "timestamp",
+          type: "datetime",
+          operator: ">=",
+          value: dateRange.from,
+        },
+      ],
     },
     {
       enabled: !!projectId,
