@@ -744,4 +744,194 @@ export const scoresRouter = createTRPCRouter({
     .query(async ({ input }) => {
       return (await getScoreMetadataById(input.projectId, input.id)) ?? null;
     }),
+
+  // Manual rating endpoints for Juspay Dashboard
+  createManualRating: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        traceId: z.string(),
+        rating: z.enum(["correct", "needs-work", "wrong"]),
+        comment: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "scores:CUD",
+      });
+
+      // Check if trace exists
+      const clickhouseTrace = await getTraceById({
+        traceId: input.traceId,
+        projectId: input.projectId,
+        clickhouseFeatureTag: "manual-rating",
+      });
+
+      if (!clickhouseTrace) {
+        throw new LangfuseNotFoundError(
+          `No trace with id ${input.traceId} in project ${input.projectId}`,
+        );
+      }
+
+      // Check if manual rating already exists for this trace
+      const existingScore = await searchExistingAnnotationScore(
+        input.projectId,
+        null, // observationId
+        input.traceId,
+        null, // sessionId
+        "manual-rating",
+        undefined, // configId
+        "CATEGORICAL",
+      );
+
+      const scoreId = existingScore?.id ?? v4();
+      const now = new Date();
+
+      await upsertScore({
+        id: scoreId,
+        timestamp: convertDateToClickhouseDateTime(now),
+        project_id: input.projectId,
+        environment: "default",
+        trace_id: input.traceId,
+        observation_id: null,
+        session_id: null,
+        name: "manual-rating",
+        value: undefined,
+        source: ScoreSource.ANNOTATION,
+        comment: input.comment || `Manual rating: ${input.rating}`,
+        author_user_id: ctx.session.user.id,
+        config_id: null,
+        data_type: "CATEGORICAL",
+        string_value: input.rating,
+        queue_id: null,
+      });
+
+      await auditLog({
+        session: ctx.session,
+        resourceType: "score",
+        resourceId: scoreId,
+        action: existingScore ? "update" : "create",
+        after: {
+          id: scoreId,
+          projectId: input.projectId,
+          traceId: input.traceId,
+          name: "manual-rating",
+          stringValue: input.rating,
+          comment: input.comment || `Manual rating: ${input.rating}`,
+          authorUserId: ctx.session.user.id,
+          source: ScoreSource.ANNOTATION,
+          dataType: "CATEGORICAL",
+          timestamp: now,
+        },
+      });
+
+      return { success: true, scoreId };
+    }),
+
+  getManualRatings: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        traceIds: z.array(z.string()).optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const filters: any[] = [
+        {
+          column: "name",
+          type: "string",
+          operator: "=",
+          value: "manual-rating",
+        },
+      ];
+
+      if (input.traceIds && input.traceIds.length > 0) {
+        filters.push({
+          column: "traceId",
+          type: "stringOptions",
+          operator: "any of",
+          value: input.traceIds,
+        });
+      }
+
+      const scores = await getScoresUiTable({
+        projectId: input.projectId,
+        filter: filters,
+        orderBy: { column: "timestamp", order: "DESC" as const },
+        limit: 1000,
+        offset: 0,
+        excludeMetadata: true,
+        includeHasMetadataFlag: false,
+      });
+
+      return scores.map((score) => ({
+        traceId: score.traceId!,
+        rating: score.stringValue!,
+        comment: score.comment,
+        authorUserId: score.authorUserId,
+        timestamp: score.timestamp,
+        scoreId: score.id,
+      }));
+    }),
+
+  deleteManualRating: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        traceId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "scores:CUD",
+      });
+
+      // Find the manual rating score for this trace
+      const scores = await getScoresUiTable({
+        projectId: input.projectId,
+        filter: [
+          {
+            column: "name",
+            type: "string",
+            operator: "=",
+            value: "manual-rating",
+          },
+          {
+            column: "traceId",
+            type: "string",
+            operator: "=",
+            value: input.traceId,
+          },
+        ],
+        orderBy: { column: "timestamp", order: "DESC" as const },
+        limit: 1,
+        offset: 0,
+        excludeMetadata: true,
+        includeHasMetadataFlag: false,
+      });
+
+      if (scores.length === 0) {
+        throw new LangfuseNotFoundError(
+          `No manual rating found for trace ${input.traceId} in project ${input.projectId}`,
+        );
+      }
+
+      const score = scores[0];
+
+      await auditLog({
+        session: ctx.session,
+        resourceType: "score",
+        resourceId: score.id,
+        action: "delete",
+        before: score,
+      });
+
+      await deleteScores(input.projectId, [score.id]);
+
+      return { success: true };
+    }),
 });

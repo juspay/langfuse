@@ -24,6 +24,7 @@ import {
   GripVertical,
   Menu,
   X,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/src/utils/tailwind";
 import { Skeleton } from "@/src/components/ui/skeleton";
@@ -38,6 +39,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/src/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/src/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/src/components/ui/table";
 import { Calendar as CalendarComponent } from "@/src/components/ui/calendar";
 import { MarkdownJsonView } from "@/src/components/ui/MarkdownJsonView";
 import { PrettyJsonView } from "@/src/components/ui/PrettyJsonView";
@@ -64,45 +80,39 @@ export default function JuspayDashboard() {
     defaultRelativeAggregation: "last1Day",
   });
 
-  // Auto-update URL with default date range on initial load
+  // Ensure URL is updated with default date range on first visit (for sharing)
   React.useEffect(() => {
-    if (router.isReady && timeRange && typeof window !== "undefined") {
+    if (router.isReady && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       
-      // Check if there's no existing dateRange parameter in URL
+      // If no dateRange parameter exists in URL, ensure it gets set
       if (!params.has('dateRange')) {
-        // Convert timeRange to the format expected by the URL
-        const absoluteRange = toAbsoluteTimeRange(timeRange);
-        if (absoluteRange) {
-          const fromTimestamp = absoluteRange.from.getTime();
-          const toTimestamp = absoluteRange.to.getTime();
-          const dateRangeParam = `${fromTimestamp}-${toTimestamp}`;
-          
-          params.set('dateRange', dateRangeParam);
-          
-          // Update URL without navigation
-          const newUrl = `${window.location.pathname}?${params.toString()}`;
-          window.history.replaceState({}, "", newUrl);
-          console.log("🔗 Auto-updated URL with default date range:", newUrl);
+        // The hook should handle this, but let's ensure it happens
+        // by triggering a setTimeRange with the current timeRange
+        if (timeRange) {
+          setTimeRange(timeRange);
         }
       }
     }
-  }, [router.isReady, timeRange]);
+  }, [router.isReady, timeRange, setTimeRange]);
 
   // Convert timeRange to absolute date range for compatibility
   const tableDateRange = React.useMemo(() => {
-    return toAbsoluteTimeRange(timeRange) ?? undefined;
+    return toAbsoluteTimeRange(timeRange);
   }, [timeRange]);
 
-  // Use tableDateRange as our dateRange
-  const dateRange = tableDateRange ?? (() => {
-    // Create fallback date range without mutation
+  // Use tableDateRange as our dateRange with proper fallback
+  const dateRange = React.useMemo(() => {
+    if (tableDateRange) {
+      return tableDateRange;
+    }
+    // Create fallback date range
     const today = new Date();
     return {
       from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
       to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
     };
-  })();
+  }, [tableDateRange]);
 
   // Filter persistence using localStorage (same approach as before but simpler)
   const filterStorageKey = `juspay-dashboard-filters-${projectId}`;
@@ -221,7 +231,7 @@ export default function JuspayDashboard() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedToolCall, setSelectedToolCall] = useState<any>(null);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const [showOnlyMerchant, setShowOnlyMerchant] = useState(() => {
@@ -288,6 +298,154 @@ export default function JuspayDashboard() {
   });
   const [newEmailInput, setNewEmailInput] = useState("");
 
+  // Fetch traces for all sessions within date range with pagination
+  const [allTraces, setAllTraces] = React.useState<any[]>([]);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
+
+  const allSessionsTraces = api.traces.all.useQuery(
+    {
+      projectId,
+      filter: [
+        {
+          column: "timestamp",
+          type: "datetime",
+          operator: ">=",
+          value: dateRange.from,
+        },
+        {
+          column: "timestamp",
+          type: "datetime",
+          operator: "<=",
+          value: dateRange.to,
+        },
+      ],
+      searchQuery: null,
+      searchType: [],
+      page: currentPage,
+      limit: 99,
+      orderBy: { column: "timestamp", order: "DESC" },
+    },
+    {
+      enabled: !!projectId && hasMoreTraces,
+    },
+  );
+
+  // Accumulate traces from pagination
+  React.useEffect(() => {
+    if (allSessionsTraces.data?.traces) {
+      const newTraces = allSessionsTraces.data.traces;
+      if (currentPage === 0) {
+        setAllTraces(newTraces);
+      } else {
+        setAllTraces((prev) => [...prev, ...newTraces]);
+      }
+
+      if (newTraces.length < 99) {
+        setHasMoreTraces(false);
+      }
+    }
+  }, [allSessionsTraces.data?.traces, currentPage]);
+
+  // Auto-load more traces when there are more available
+  React.useEffect(() => {
+    if (
+      hasMoreTraces &&
+      !allSessionsTraces.isLoading &&
+      allSessionsTraces.data?.traces
+    ) {
+      setCurrentPage((prev) => prev + 1);
+    }
+  }, [
+    hasMoreTraces,
+    allSessionsTraces.isLoading,
+    allSessionsTraces.data?.traces,
+  ]);
+
+  // Reset trace pagination when date range changes
+  React.useEffect(() => {
+    if (dateRange?.from && dateRange?.to) {
+      setAllTraces([]);
+      setCurrentPage(0);
+      setHasMoreTraces(true);
+    }
+  }, [dateRange?.from, dateRange?.to]);
+
+  // Create a wrapper object
+  const allSessionsTracesData = React.useMemo(
+    () => ({
+      traces: allTraces,
+    }),
+    [allTraces],
+  );
+
+  // Fetch manual ratings from database
+  const manualRatingsQuery = api.scores.getManualRatings.useQuery(
+    {
+      projectId,
+      traceIds: allSessionsTracesData.traces.map(t => t.id),
+    },
+    {
+      enabled: !!projectId && allSessionsTracesData.traces.length > 0,
+    },
+  );
+
+  // Create manual ratings mutation
+  const createManualRatingMutation = api.scores.createManualRating.useMutation({
+    onSuccess: () => {
+      // Refetch manual ratings after successful creation
+      manualRatingsQuery.refetch();
+    },
+    onError: (error) => {
+      console.error("Failed to create manual rating:", error);
+      toast.error("Failed to save rating");
+    },
+  });
+
+  // Delete manual rating mutation
+  const deleteManualRatingMutation = api.scores.deleteManualRating.useMutation({
+    onSuccess: () => {
+      // Refetch manual ratings after successful deletion
+      manualRatingsQuery.refetch();
+    },
+    onError: (error) => {
+      console.error("Failed to delete manual rating:", error);
+      toast.error("Failed to clear rating");
+    },
+  });
+
+  // Convert manual ratings data to Map for easier access
+  const manualRatings = React.useMemo(() => {
+    const ratingsMap = new Map<string, string>();
+    if (manualRatingsQuery.data) {
+      manualRatingsQuery.data.forEach(rating => {
+        ratingsMap.set(rating.traceId, rating.rating);
+      });
+    }
+    return ratingsMap;
+  }, [manualRatingsQuery.data]);
+
+  // Function to update manual rating for a trace
+  const updateManualRating = React.useCallback(
+    (traceId: string, rating: string | null) => {
+      if (rating === null) {
+        // Delete the rating
+        deleteManualRatingMutation.mutate({
+          projectId,
+          traceId,
+        });
+      } else {
+        // Create or update the rating
+        createManualRatingMutation.mutate({
+          projectId,
+          traceId,
+          rating: rating as "correct" | "needs-work" | "wrong",
+        });
+      }
+    },
+    [projectId, createManualRatingMutation, deleteManualRatingMutation],
+  );
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sessionPage, setSessionPage] = useState(0);
   
@@ -296,6 +454,9 @@ export default function JuspayDashboard() {
   const [isResizing, setIsResizing] = useState<'right' | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileRightPanelOpen, setIsMobileRightPanelOpen] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showManualRatingsModal, setShowManualRatingsModal] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
   const handleDateRangeChange = React.useCallback(
     (newDateRange: { from: Date; to: Date }) => {
@@ -303,7 +464,24 @@ export default function JuspayDashboard() {
         from: newDateRange.from.toISOString(),
         to: newDateRange.to.toISOString(),
       });
-      // Use the same approach as traces page
+      
+      // Cancel previous loading and start new one immediately
+      setIsLoadingData(true);
+      
+      // Clear existing data immediately to show loading state
+      setAllSessions([]);
+      setAllTraces([]);
+      setAllScores([]);
+      
+      // Reset pagination
+      setSessionPage(0);
+      setCurrentPage(0);
+      setScoresPage(0);
+      setHasMoreSessions(true);
+      setHasMoreTraces(true);
+      setHasMoreScores(true);
+      
+      // Set new date range (this will trigger new API calls)
       setTimeRange({ from: newDateRange.from, to: newDateRange.to });
     },
     [setTimeRange],
@@ -417,7 +595,7 @@ export default function JuspayDashboard() {
       orderBy: { column: "createdAt", order: "DESC" },
     },
     {
-      enabled: !!projectId,
+      enabled: !!projectId && !!dateRange?.from && !!dateRange?.to,
     },
   );
 
@@ -447,12 +625,22 @@ export default function JuspayDashboard() {
     }
   }, [hasMoreSessions, sessions.isLoading, sessions.data?.sessions]);
 
-  // Reset session pagination when date range changes
+  // Reset session pagination when date range changes with loading state
   React.useEffect(() => {
-    setAllSessions([]);
-    setSessionPage(0);
-    setHasMoreSessions(true);
-  }, [projectId, dateRange.from, dateRange.to]);
+    if (dateRange?.from && dateRange?.to) {
+      setIsLoadingData(true);
+      setAllSessions([]);
+      setSessionPage(0);
+      setHasMoreSessions(true);
+      
+      // Clear loading state after a short delay to prevent race conditions
+      const timer = setTimeout(() => {
+        setIsLoadingData(false);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [projectId, dateRange?.from, dateRange?.to]);
 
   // Create wrapper for sessions
   const allSessionsData = React.useMemo(
@@ -464,11 +652,13 @@ export default function JuspayDashboard() {
 
   // Reset when date range changes
   React.useEffect(() => {
-    console.log("🔄 SESSIONS - Date range changed, will refetch:", {
-      from: dateRange.from.toISOString(),
-      to: dateRange.to.toISOString(),
-    });
-  }, [dateRange.from, dateRange.to]);
+    if (dateRange?.from && dateRange?.to) {
+      console.log("🔄 SESSIONS - Date range changed, will refetch:", {
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      });
+    }
+  }, [dateRange?.from, dateRange?.to]);
 
   // Fetch all tags for filtering (no limit issues!)
   const traceFilterOptions = api.traces.filterOptions.useQuery(
@@ -486,85 +676,6 @@ export default function JuspayDashboard() {
     {
       enabled: !!projectId,
     },
-  );
-
-  // Fetch traces for all sessions within date range with pagination
-  const [allTraces, setAllTraces] = React.useState<any[]>([]);
-  const [currentPage, setCurrentPage] = React.useState(0);
-  const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
-
-  const allSessionsTraces = api.traces.all.useQuery(
-    {
-      projectId,
-      filter: [
-        {
-          column: "timestamp",
-          type: "datetime",
-          operator: ">=",
-          value: dateRange.from,
-        },
-        {
-          column: "timestamp",
-          type: "datetime",
-          operator: "<=",
-          value: dateRange.to,
-        },
-      ],
-      searchQuery: null,
-      searchType: [],
-      page: currentPage,
-      limit: 99,
-      orderBy: { column: "timestamp", order: "DESC" },
-    },
-    {
-      enabled: !!projectId && !!allSessions.length && hasMoreTraces,
-    },
-  );
-
-  // Accumulate traces from pagination
-  React.useEffect(() => {
-    if (allSessionsTraces.data?.traces) {
-      const newTraces = allSessionsTraces.data.traces;
-      if (currentPage === 0) {
-        setAllTraces(newTraces);
-      } else {
-        setAllTraces((prev) => [...prev, ...newTraces]);
-      }
-
-      if (newTraces.length < 99) {
-        setHasMoreTraces(false);
-      }
-    }
-  }, [allSessionsTraces.data?.traces, currentPage]);
-
-  // Auto-load more traces when there are more available
-  React.useEffect(() => {
-    if (
-      hasMoreTraces &&
-      !allSessionsTraces.isLoading &&
-      allSessionsTraces.data?.traces
-    ) {
-      setCurrentPage((prev) => prev + 1);
-    }
-  }, [
-    hasMoreTraces,
-    allSessionsTraces.isLoading,
-    allSessionsTraces.data?.traces,
-  ]);
-
-  // Reset trace pagination when date range changes
-  React.useEffect(() => {
-    setAllTraces([]);
-    setCurrentPage(0);
-    setHasMoreTraces(true);
-  }, [dateRange.from, dateRange.to]);
-
-  // Create a wrapper object
-  const allSessionsTracesData = React.useMemo(
-    () => ({
-      traces: allTraces,
-    }),
-    [allTraces],
   );
 
   // Fetch scores with pagination
@@ -617,10 +728,12 @@ export default function JuspayDashboard() {
 
   // Reset scores pagination when date range changes
   React.useEffect(() => {
-    setAllScores([]);
-    setScoresPage(0);
-    setHasMoreScores(true);
-  }, [dateRange.from, dateRange.to]);
+    if (dateRange?.from && dateRange?.to) {
+      setAllScores([]);
+      setScoresPage(0);
+      setHasMoreScores(true);
+    }
+  }, [dateRange?.from, dateRange?.to]);
 
   // Simple scores data wrapper
   const allScoresData = React.useMemo(
@@ -971,55 +1084,7 @@ export default function JuspayDashboard() {
 
       if (!matchesSearch) return false;
 
-      // Helper function to categorize user for statistics filtering
-      const categorizeUserForStats = (userIds: string[] | undefined) => {
-        if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
-          return "unknown";
-        }
-        
-        const userId = userIds[0];
-        
-        // Check if user is in team whitelist - more flexible matching
-        if (teamEmails.some(email => {
-          const emailLower = email.toLowerCase().trim();
-          const userIdLower = userId.toLowerCase().trim();
-          
-          // Try exact match first
-          if (userIdLower === emailLower) return true;
-          
-          // Try contains match (user ID contains the email)
-          if (userIdLower.includes(emailLower)) return true;
-          
-          // Try email contains user ID (for partial email matches)
-          if (emailLower.includes(userIdLower)) return true;
-          
-          // Try domain matching if email has @ symbol
-          if (emailLower.includes('@')) {
-            const emailDomain = emailLower.split('@')[1];
-            const emailUsername = emailLower.split('@')[0];
-            
-            // Check if user ID matches username part
-            if (userIdLower === emailUsername) return true;
-            
-            // Check if user ID contains username
-            if (userIdLower.includes(emailUsername)) return true;
-          }
-          
-          return false;
-        })) {
-          return "team";
-        }
-        
-        // Check if user is juspay internal (contains @juspay)
-        if (userId.toLowerCase().includes("@juspay")) {
-          return "juspay-genius-merchant";
-        }
-        
-        // Otherwise it's a merchant
-        return "merchant";
-      };
-
-      const userCategory = categorizeUserForStats(session.userIds);
+      const userCategory = categorizeUser(session.userIds);
 
       // Category filters - if any are checked, show only those categories
       if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
@@ -1068,29 +1133,6 @@ export default function JuspayDashboard() {
       return true;
     });
 
-    // Categorize queries by user type
-    let merchantQueries = 0;
-    let geniusTeamQueries = 0;
-    let juspayGeniusMerchantQueries = 0;
-
-    tracesForStats.forEach((trace) => {
-      const session = allSessionsData.sessions.find(s => s.id === trace.sessionId);
-      if (session) {
-        const userCategory = categorizeUser(session.userIds);
-        switch (userCategory) {
-          case "merchant":
-            merchantQueries++;
-            break;
-          case "team":
-            geniusTeamQueries++;
-            break;
-          case "juspay-genius-merchant":
-            juspayGeniusMerchantQueries++;
-            break;
-        }
-      }
-    });
-
     // Total queries = traces for statistics
     const totalQueries = tracesForStats.length;
 
@@ -1122,9 +1164,9 @@ export default function JuspayDashboard() {
 
     return {
       totalQueries,
-      merchantQueries,
-      geniusTeamQueries,
-      juspayGeniusMerchantQueries,
+      merchantQueries: 0, // Will be calculated separately
+      geniusTeamQueries: 0, // Will be calculated separately
+      juspayGeniusMerchantQueries: 0, // Will be calculated separately
       correctQueries,
       incorrectQueries,
       correctPercentage,
@@ -1139,6 +1181,151 @@ export default function JuspayDashboard() {
     showOnlyMerchant,
     showOnlyTeam,
     showOnlyJuspayOthers,
+    selectedTag,
+    hideUnknownUser,
+    sessionToTagsMap,
+    teamEmails,
+  ]);
+
+  // Separate statistics for filter cards - always show total counts regardless of category filters
+  const cardStatistics = React.useMemo(() => {
+    if (!allSessionsTracesData.traces.length) {
+      return {
+        merchantQueries: 0,
+        geniusTeamQueries: 0,
+        juspayGeniusMerchantQueries: 0,
+      };
+    }
+
+    // Helper function to categorize user
+    const categorizeUser = (userIds: string[] | undefined) => {
+      if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
+        return "unknown";
+      }
+      
+      const userId = userIds[0];
+      
+      // Check if user is in team whitelist - more flexible matching
+      if (teamEmails.some(email => {
+        const emailLower = email.toLowerCase().trim();
+        const userIdLower = userId.toLowerCase().trim();
+        
+        // Try exact match first
+        if (userIdLower === emailLower) return true;
+        
+        // Try contains match (user ID contains the email)
+        if (userIdLower.includes(emailLower)) return true;
+        
+        // Try email contains user ID (for partial email matches)
+        if (emailLower.includes(userIdLower)) return true;
+        
+        // Try domain matching if email has @ symbol
+        if (emailLower.includes('@')) {
+          const emailDomain = emailLower.split('@')[1];
+          const emailUsername = emailLower.split('@')[0];
+          
+          // Check if user ID matches username part
+          if (userIdLower === emailUsername) return true;
+          
+          // Check if user ID contains username
+          if (userIdLower.includes(emailUsername)) return true;
+        }
+        
+        return false;
+      })) {
+        return "team";
+      }
+      
+      // Check if user is juspay internal (contains @juspay)
+      if (userId.toLowerCase().includes("@juspay")) {
+        return "juspay-genius-merchant";
+      }
+      
+      // Otherwise it's a merchant
+      return "merchant";
+    };
+
+    // Filter sessions for card statistics - exclude category filters but include other filters
+    const sessionsForCardStats = allSessionsData.sessions.filter((session) => {
+      // Search filter
+      const matchesSearch = searchQuery
+        ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.userIds?.some((uid: string) =>
+            uid.toLowerCase().includes(searchQuery.toLowerCase()),
+          )
+        : true;
+
+      if (!matchesSearch) return false;
+
+      const userCategory = categorizeUser(session.userIds);
+
+      // Tag filter
+      if (selectedTag !== "all") {
+        const sessionTags = sessionToTagsMap.get(session.id);
+        if (!sessionTags || !sessionTags.includes(selectedTag)) return false;
+      }
+
+      // Hide Unknown User filter
+      if (hideUnknownUser) {
+        if (userCategory === "unknown") return false;
+      }
+
+      // NOTE: We deliberately exclude category filters (showOnlyMerchant, showOnlyTeam, showOnlyJuspayOthers)
+      // and evaluation filters (filterCorrect, filterIncorrect) here
+      // so card statistics always show total counts
+
+      return true;
+    });
+
+    // Get session IDs from sessions for card statistics
+    const sessionIdsForCardStats = new Set(sessionsForCardStats.map(session => session.id));
+
+    // Filter traces to only include those from sessions for card statistics
+    const tracesForCardStats = allSessionsTracesData.traces.filter((trace) => {
+      // Only include traces from sessions for card statistics
+      if (!trace.sessionId || !sessionIdsForCardStats.has(trace.sessionId)) {
+        return false;
+      }
+
+      // Apply tag filter if selected
+      if (selectedTag !== "all") {
+        if (!trace.tags || !trace.tags.includes(selectedTag)) return false;
+      }
+      return true;
+    });
+
+    // Categorize queries by user type for cards
+    let merchantQueries = 0;
+    let geniusTeamQueries = 0;
+    let juspayGeniusMerchantQueries = 0;
+
+    tracesForCardStats.forEach((trace) => {
+      const session = allSessionsData.sessions.find(s => s.id === trace.sessionId);
+      if (session) {
+        const userCategory = categorizeUser(session.userIds);
+        switch (userCategory) {
+          case "merchant":
+            merchantQueries++;
+            break;
+          case "team":
+            geniusTeamQueries++;
+            break;
+          case "juspay-genius-merchant":
+            juspayGeniusMerchantQueries++;
+            break;
+        }
+      }
+    });
+
+    return {
+      merchantQueries,
+      geniusTeamQueries,
+      juspayGeniusMerchantQueries,
+    };
+  }, [
+    allSessionsTracesData.traces,
+    allSessionsData.sessions,
+    searchQuery,
     selectedTag,
     hideUnknownUser,
     sessionToTagsMap,
@@ -1253,6 +1440,130 @@ export default function JuspayDashboard() {
   const isMobile = windowWidth < 768;
   const isTablet = windowWidth >= 768 && windowWidth < 1024;
   const isDesktop = windowWidth >= 1024;
+
+  // Calculate detailed statistics for the table
+  const detailedStatistics = React.useMemo(() => {
+    if (!allSessionsTracesData.traces.length) {
+      return {
+        merchant: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
+        team: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
+        other: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
+      };
+    }
+
+    // Helper function to categorize user
+    const categorizeUser = (userIds: string[] | undefined) => {
+      if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
+        return "unknown";
+      }
+      
+      const userId = userIds[0];
+      
+      // Check if user is in team whitelist
+      if (teamEmails.some(email => {
+        const emailLower = email.toLowerCase().trim();
+        const userIdLower = userId.toLowerCase().trim();
+        
+        return userIdLower === emailLower || 
+               userIdLower.includes(emailLower) || 
+               emailLower.includes(userIdLower) ||
+               (emailLower.includes('@') && userIdLower === emailLower.split('@')[0]);
+      })) {
+        return "team";
+      }
+      
+      // Check if user is juspay internal
+      if (userId.toLowerCase().includes("@juspay")) {
+        return "juspay-genius-merchant";
+      }
+      
+      return "merchant";
+    };
+
+    // Filter sessions based on current filters (excluding correct/incorrect filters)
+    const sessionsForStats = allSessionsData.sessions.filter((session) => {
+      const matchesSearch = searchQuery
+        ? session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.userIds?.some((uid: string) =>
+            uid.toLowerCase().includes(searchQuery.toLowerCase()),
+          )
+        : true;
+
+      if (!matchesSearch) return false;
+
+      const userCategory = categorizeUser(session.userIds);
+
+      if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
+        const matchesSelectedCategories = 
+          (showOnlyMerchant && userCategory === "merchant") ||
+          (showOnlyTeam && userCategory === "team") ||
+          (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
+        
+        if (!matchesSelectedCategories) return false;
+      }
+
+      if (selectedTag !== "all") {
+        const sessionTags = sessionToTagsMap.get(session.id);
+        if (!sessionTags || !sessionTags.includes(selectedTag)) return false;
+      }
+
+      if (hideUnknownUser && userCategory === "unknown") return false;
+
+      return true;
+    });
+
+    // Group sessions by category
+    const sessionsByCategory = {
+      merchant: sessionsForStats.filter(s => categorizeUser(s.userIds) === "merchant"),
+      team: sessionsForStats.filter(s => categorizeUser(s.userIds) === "team"),
+      other: sessionsForStats.filter(s => categorizeUser(s.userIds) === "juspay-genius-merchant"),
+    };
+
+    // Calculate stats for each category
+    const calculateCategoryStats = (sessions: any[], category: string) => {
+      const sessionIds = new Set(sessions.map(s => s.id));
+      
+      // Get traces for these sessions
+      const categoryTraces = allSessionsTracesData.traces.filter(trace => 
+        trace.sessionId && sessionIds.has(trace.sessionId)
+      );
+
+      // Get scores for these traces
+      const categoryScores = allScoresData.scores.filter(score => 
+        categoryTraces.some(trace => trace.id === score.traceId)
+      );
+
+      const correctQueries = categoryScores.filter(score => score.value === 1).length;
+      const incorrectQueries = categoryScores.filter(score => score.value === 0).length;
+      const totalEvaluated = correctQueries + incorrectQueries;
+      const accuracy = totalEvaluated > 0 ? Math.round((correctQueries / totalEvaluated) * 100) : 0;
+
+      return {
+        totalSessions: sessions.length,
+        totalQueries: categoryTraces.length,
+        incorrectQueries,
+        accuracy,
+      };
+    };
+
+    return {
+      merchant: calculateCategoryStats(sessionsByCategory.merchant, "merchant"),
+      team: calculateCategoryStats(sessionsByCategory.team, "team"),
+      other: calculateCategoryStats(sessionsByCategory.other, "other"),
+    };
+  }, [
+    allSessionsTracesData.traces,
+    allSessionsData.sessions,
+    allScoresData.scores,
+    searchQuery,
+    showOnlyMerchant,
+    showOnlyTeam,
+    showOnlyJuspayOthers,
+    selectedTag,
+    hideUnknownUser,
+    sessionToTagsMap,
+    teamEmails,
+  ]);
 
   return (
     <Page
@@ -1545,12 +1856,12 @@ export default function JuspayDashboard() {
                     >
                       <div className={cn(
                         "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        statistics.merchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        statistics.merchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        cardStatistics.merchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        cardStatistics.merchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
                         "h-10 w-10 text-xs",
                         showOnlyMerchant ? "bg-green-600" : "bg-green-500"
                       )}>
-                        {statistics.merchantQueries > 9999 ? "9999+" : statistics.merchantQueries}
+                        {cardStatistics.merchantQueries > 9999 ? "9999+" : cardStatistics.merchantQueries}
                         {showOnlyMerchant && (
                           <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-600 rounded-full flex items-center justify-center">
                             <span className="text-white text-xs">✓</span>
@@ -1577,12 +1888,12 @@ export default function JuspayDashboard() {
                     >
                       <div className={cn(
                         "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        statistics.geniusTeamQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        statistics.geniusTeamQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        cardStatistics.geniusTeamQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        cardStatistics.geniusTeamQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
                         "h-10 w-10 text-xs",
                         showOnlyTeam ? "bg-blue-600" : "bg-blue-500"
                       )}>
-                        {statistics.geniusTeamQueries > 9999 ? "9999+" : statistics.geniusTeamQueries}
+                        {cardStatistics.geniusTeamQueries > 9999 ? "9999+" : cardStatistics.geniusTeamQueries}
                         {showOnlyTeam && (
                           <div className="absolute -top-1 -right-1 h-3 w-3 bg-blue-600 rounded-full flex items-center justify-center">
                             <span className="text-white text-xs">✓</span>
@@ -1609,12 +1920,12 @@ export default function JuspayDashboard() {
                     >
                       <div className={cn(
                         "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        statistics.juspayGeniusMerchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        statistics.juspayGeniusMerchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
+                        cardStatistics.juspayGeniusMerchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
+                        cardStatistics.juspayGeniusMerchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
                         "h-10 w-10 text-xs",
                         showOnlyJuspayOthers ? "bg-purple-600" : "bg-purple-500"
                       )}>
-                        {statistics.juspayGeniusMerchantQueries > 9999 ? "9999+" : statistics.juspayGeniusMerchantQueries}
+                        {cardStatistics.juspayGeniusMerchantQueries > 9999 ? "9999+" : cardStatistics.juspayGeniusMerchantQueries}
                         {showOnlyJuspayOthers && (
                           <div className="absolute -top-1 -right-1 h-3 w-3 bg-purple-600 rounded-full flex items-center justify-center">
                             <span className="text-white text-xs">✓</span>
@@ -1911,15 +2222,78 @@ export default function JuspayDashboard() {
                             )}
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="border-t p-4">
-                        <Button 
-                          className="w-full"
-                          onClick={() => setShowAdvancedFilters(false)}
-                        >
-                          Apply Filters
-                        </Button>
+
+                        {/* Apply Filters Button - For Team Email Settings */}
+                        <div className="border-t pt-4">
+                          <Button 
+                            className="w-full"
+                            onClick={() => setShowAdvancedFilters(false)}
+                          >
+                            Apply Filters
+                          </Button>
+                        </div>
+
+                        {/* Manual Ratings Section */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                            Manual Ratings
+                          </label>
+                          <Card className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-orange-200 dark:from-orange-950/20 dark:to-red-950/20 dark:border-orange-800">
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Clock className="h-4 w-4 text-orange-600" />
+                                <span className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                                  Rate Assistant Responses
+                                </span>
+                              </div>
+                              
+                              <p className="text-xs text-orange-700 dark:text-orange-400 mb-3">
+                                Click the button below to open the manual ratings interface
+                              </p>
+                              
+                              <Button
+                                onClick={() => {
+                                  setShowManualRatingsModal(true);
+                                  setShowAdvancedFilters(false);
+                                }}
+                                className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white"
+                                size="sm"
+                              >
+                                <Clock className="mr-2 h-4 w-4" />
+                                Open Manual Ratings
+                              </Button>
+
+                              {/* Show rating statistics if any ratings exist */}
+                              {manualRatings.size > 0 && (
+                                <div className="mt-3 pt-3 border-t border-orange-200 dark:border-orange-800">
+                                  <div className="text-xs text-orange-700 dark:text-orange-400 mb-2">
+                                    Current Ratings:
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div className="text-center">
+                                      <div className="font-semibold text-green-600">
+                                        {Array.from(manualRatings.values()).filter(r => r === "correct").length}
+                                      </div>
+                                      <div className="text-green-600">Correct</div>
+                                    </div>
+                                    <div className="text-center">
+                                      <div className="font-semibold text-yellow-600">
+                                        {Array.from(manualRatings.values()).filter(r => r === "needs-work").length}
+                                      </div>
+                                      <div className="text-yellow-600">Needs Work</div>
+                                    </div>
+                                    <div className="text-center">
+                                      <div className="font-semibold text-red-600">
+                                        {Array.from(manualRatings.values()).filter(r => r === "wrong").length}
+                                      </div>
+                                      <div className="text-red-600">Wrong</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </Card>
+                        </div>
                       </div>
                     </Card>
                   </div>
@@ -1934,11 +2308,16 @@ export default function JuspayDashboard() {
 
             {/* Sessions List */}
             <ScrollArea className="flex-1">
-              {sessions.isLoading ? (
+              {sessions.isLoading || isLoadingData ? (
                 <div className="space-y-3 p-4 pb-8">
                   {[...Array(5)].map((_, i) => (
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
+                  {isLoadingData && (
+                    <div className="text-center text-xs text-muted-foreground p-4">
+                      Loading data for new date range...
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-2 pb-8">
@@ -1999,7 +2378,7 @@ export default function JuspayDashboard() {
         {/* Middle Section - Conversation Flow */}
         <div 
           className={cn(
-            "flex flex-1 flex-col",
+            "flex flex-1 flex-col relative",
             isMobile && isMobileMenuOpen && "opacity-50"
           )}
         >
@@ -2045,6 +2424,8 @@ export default function JuspayDashboard() {
                           traceMetric={traceMetric}
                           projectId={projectId}
                           isSelected={selectedToolCall?.id === trace.id}
+                          manualRating={manualRatings.get(trace.id)}
+                          onManualRatingChange={updateManualRating}
                           onSelect={(traceId, timestamp) => {
                             setSelectedTraceForDetails({ traceId, timestamp });
                             setSelectedToolCall({
@@ -2071,6 +2452,236 @@ export default function JuspayDashboard() {
               </div>
             </div>
           )}
+
+
+          {/* Manual Ratings Modal */}
+          <Dialog open={showManualRatingsModal} onOpenChange={setShowManualRatingsModal}>
+            <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto p-0">
+              <DialogHeader className="p-6 pb-4">
+                <DialogTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Manual Ratings Management
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="px-6 pb-6">
+                <ManualRatingsContent
+                  manualRatings={manualRatings}
+                  allTraces={allSessionsTracesData.traces}
+                  allSessions={allSessionsData.sessions}
+                  onUpdateRating={updateManualRating}
+                  onNavigateToSession={(sessionId) => {
+                    handleSessionSelect(sessionId);
+                    setShowManualRatingsModal(false);
+                  }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Total Stats Button - Positioned in Middle Section */}
+          <Dialog open={showStatsModal} onOpenChange={setShowStatsModal}>
+            <DialogTrigger asChild>
+              <Button
+                className={cn(
+                  "absolute bottom-6 right-6 h-16 w-16 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-40",
+                  "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
+                  "flex flex-col items-center justify-center gap-1"
+                )}
+                size="lg"
+              >
+                <BarChart3 className="h-5 w-5 text-white" />
+                <span className="text-xs text-white font-medium">Metrics</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto p-0">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Total Statistics Overview
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="p-6">
+              
+              <div className="space-y-6 w-full">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                  <Card className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800 min-w-0">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate">
+                        {statistics.totalSessions}
+                      </div>
+                      <div className="text-xs text-muted-foreground leading-tight">Total Sessions</div>
+                    </div>
+                  </Card>
+                  
+                  <Card className="p-3 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800 min-w-0">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600 dark:text-green-400 truncate">
+                        {statistics.totalQueries}
+                      </div>
+                      <div className="text-xs text-muted-foreground leading-tight">Total Queries</div>
+                    </div>
+                  </Card>
+                  
+                  <Card className="p-3 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800 min-w-0">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-purple-600 dark:text-purple-400 truncate">
+                        {statistics.correctPercentage}%
+                      </div>
+                      <div className="text-xs text-muted-foreground leading-tight">Overall Accuracy</div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Detailed Statistics Table */}
+                <Card>
+                  <div className="p-4 border-b">
+                    <h3 className="text-lg font-semibold">Detailed Breakdown by User Category</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Statistics filtered by current date range and applied filters
+                    </p>
+                  </div>
+                  
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="font-semibold">Category</TableHead>
+                        <TableHead className="text-center font-semibold">Total Sessions</TableHead>
+                        <TableHead className="text-center font-semibold">Total Queries</TableHead>
+                        <TableHead className="text-center font-semibold">Incorrect Queries</TableHead>
+                        <TableHead className="text-center font-semibold">Accuracy</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow className="hover:bg-green-50 dark:hover:bg-green-950/10">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                            Merchant
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.merchant.totalSessions}
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.merchant.totalQueries}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-red-600 dark:text-red-400">
+                            {detailedStatistics.merchant.incorrectQueries}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant={detailedStatistics.merchant.accuracy >= 80 ? "default" : "destructive"}
+                            className={cn(
+                              "font-semibold",
+                              detailedStatistics.merchant.accuracy >= 80 
+                                ? "bg-green-600 hover:bg-green-700" 
+                                : ""
+                            )}
+                          >
+                            {detailedStatistics.merchant.accuracy}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      
+                      <TableRow className="hover:bg-blue-50 dark:hover:bg-blue-950/10">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                            Team
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.team.totalSessions}
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.team.totalQueries}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-red-600 dark:text-red-400">
+                            {detailedStatistics.team.incorrectQueries}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant={detailedStatistics.team.accuracy >= 80 ? "default" : "destructive"}
+                            className={cn(
+                              "font-semibold",
+                              detailedStatistics.team.accuracy >= 80 
+                                ? "bg-green-600 hover:bg-green-700" 
+                                : ""
+                            )}
+                          >
+                            {detailedStatistics.team.accuracy}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      
+                      <TableRow className="hover:bg-purple-50 dark:hover:bg-purple-950/10">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full bg-purple-500"></div>
+                            Other
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.other.totalSessions}
+                        </TableCell>
+                        <TableCell className="text-center font-semibold">
+                          {detailedStatistics.other.totalQueries}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-red-600 dark:text-red-400">
+                            {detailedStatistics.other.incorrectQueries}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant={detailedStatistics.other.accuracy >= 80 ? "default" : "destructive"}
+                            className={cn(
+                              "font-semibold",
+                              detailedStatistics.other.accuracy >= 80 
+                                ? "bg-green-600 hover:bg-green-700" 
+                                : ""
+                            )}
+                          >
+                            {detailedStatistics.other.accuracy}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </Card>
+
+                {/* Additional Insights */}
+                <Card className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-950/20 dark:to-gray-900/20">
+                  <h4 className="font-semibold mb-2">Current Filters Applied:</h4>
+                  <div className="flex flex-wrap gap-2 text-sm">
+                    <Badge variant="outline">
+                      Date: {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+                    </Badge>
+                    {selectedTag !== "all" && (
+                      <Badge variant="outline">Agent: {selectedTag}</Badge>
+                    )}
+                    {showOnlyMerchant && <Badge variant="outline">Merchant Only</Badge>}
+                    {showOnlyTeam && <Badge variant="outline">Team Only</Badge>}
+                    {showOnlyJuspayOthers && <Badge variant="outline">Other Only</Badge>}
+                    {filterCorrect && <Badge variant="outline">Correct Only</Badge>}
+                    {filterIncorrect && <Badge variant="outline">Incorrect Only</Badge>}
+                    {hideUnknownUser && <Badge variant="outline">Hide Unknown</Badge>}
+                    {teamEmails.length > 0 && (
+                      <Badge variant="outline">Team Emails: {teamEmails.length}</Badge>
+                    )}
+                  </div>
+                </Card>
+              </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Right Resizer Handle */}
@@ -2200,8 +2811,233 @@ export default function JuspayDashboard() {
           </div>
         </div>
         )}
+
       </div>
     </Page>
+  );
+}
+
+// Manual Ratings Content Component
+function ManualRatingsContent({
+  manualRatings,
+  allTraces,
+  allSessions,
+  onUpdateRating,
+  onNavigateToSession,
+}: {
+  manualRatings: Map<string, string>;
+  allTraces: any[];
+  allSessions: any[];
+  onUpdateRating: (traceId: string, rating: string | null) => void;
+  onNavigateToSession: (sessionId: string) => void;
+}) {
+  const [filterRating, setFilterRating] = useState<string>("all");
+
+  // Get all rated traces with their details
+  const ratedTraces = React.useMemo(() => {
+    const traces = Array.from(manualRatings.entries()).map(([traceId, rating]) => {
+      const trace = allTraces.find(t => t.id === traceId);
+      if (!trace) return null;
+
+      const session = allSessions.find(s => s.id === trace.sessionId);
+      return {
+        traceId,
+        rating,
+        trace,
+        session,
+        timestamp: trace.timestamp,
+      };
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+    // Filter by rating type
+    if (filterRating !== "all") {
+      return traces.filter(item => item.rating === filterRating);
+    }
+
+    // Sort by timestamp (newest first)
+    return traces.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [manualRatings, allTraces, allSessions, filterRating]);
+
+  // Statistics
+  const stats = React.useMemo(() => {
+    const total = manualRatings.size;
+    const correct = Array.from(manualRatings.values()).filter(r => r === "correct").length;
+    const needsWork = Array.from(manualRatings.values()).filter(r => r === "needs-work").length;
+    const wrong = Array.from(manualRatings.values()).filter(r => r === "wrong").length;
+
+    return { total, correct, needsWork, wrong };
+  }, [manualRatings]);
+
+  const getRatingIcon = (rating: string) => {
+    switch (rating) {
+      case "correct":
+        return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+      case "needs-work":
+        return <Clock className="h-4 w-4 text-yellow-600" />;
+      case "wrong":
+        return <XCircle className="h-4 w-4 text-red-600" />;
+      default:
+        return null;
+    }
+  };
+
+  const getRatingColor = (rating: string) => {
+    switch (rating) {
+      case "correct":
+        return "text-green-600 bg-green-50 border-green-200";
+      case "needs-work":
+        return "text-yellow-600 bg-yellow-50 border-yellow-200";
+      case "wrong":
+        return "text-red-600 bg-red-50 border-red-200";
+      default:
+        return "text-gray-600 bg-gray-50 border-gray-200";
+    }
+  };
+
+  if (manualRatings.size === 0) {
+    return (
+      <div className="text-center py-8">
+        <Clock className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No Manual Ratings Yet</h3>
+        <p className="text-gray-500">
+          Start rating responses by clicking the "Correct", "Needs Work", or "Wrong" buttons on any assistant response.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <Card className="p-4 text-center">
+          <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+          <div className="text-sm text-muted-foreground">Total Rated</div>
+        </Card>
+        <Card className="p-4 text-center">
+          <div className="text-2xl font-bold text-green-600">{stats.correct}</div>
+          <div className="text-sm text-muted-foreground">Correct</div>
+        </Card>
+        <Card className="p-4 text-center">
+          <div className="text-2xl font-bold text-yellow-600">{stats.needsWork}</div>
+          <div className="text-sm text-muted-foreground">Needs Work</div>
+        </Card>
+        <Card className="p-4 text-center">
+          <div className="text-2xl font-bold text-red-600">{stats.wrong}</div>
+          <div className="text-sm text-muted-foreground">Wrong</div>
+        </Card>
+      </div>
+
+      {/* Filter Controls */}
+      <div className="flex items-center gap-4">
+        <label className="text-sm font-medium">Filter by Rating:</label>
+        <Select value={filterRating} onValueChange={setFilterRating}>
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Ratings ({stats.total})</SelectItem>
+            <SelectItem value="correct">Correct ({stats.correct})</SelectItem>
+            <SelectItem value="needs-work">Needs Work ({stats.needsWork})</SelectItem>
+            <SelectItem value="wrong">Wrong ({stats.wrong})</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            if (confirm("Are you sure you want to clear all manual ratings? This action cannot be undone.")) {
+              Array.from(manualRatings.keys()).forEach(traceId => {
+                onUpdateRating(traceId, null);
+              });
+              toast.success("All manual ratings cleared");
+            }
+          }}
+        >
+          Clear All Ratings
+        </Button>
+      </div>
+
+      {/* Ratings Table */}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Rating</TableHead>
+              <TableHead>Session</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Timestamp</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {ratedTraces.map((item) => (
+              <TableRow key={item.traceId} className="hover:bg-muted/50">
+                <TableCell>
+                  <div className={cn(
+                    "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium",
+                    getRatingColor(item.rating)
+                  )}>
+                    {getRatingIcon(item.rating)}
+                    {item.rating === "needs-work" ? "Needs Work" : 
+                     item.rating.charAt(0).toUpperCase() + item.rating.slice(1)}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="font-mono text-xs">
+                    {item.session?.id.slice(0, 8)}...
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    {item.session?.userIds?.[0] || "Unknown User"}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm text-muted-foreground">
+                    {new Date(item.timestamp).toLocaleString()}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (item.session?.id) {
+                          onNavigateToSession(item.session.id);
+                          toast.success("Navigated to session");
+                        }
+                      }}
+                    >
+                      View Session
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        onUpdateRating(item.traceId, null);
+                        toast.success("Rating cleared");
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {ratedTraces.length === 0 && filterRating !== "all" && (
+        <div className="text-center py-8">
+          <p className="text-gray-500">
+            No ratings found for "{filterRating === "needs-work" ? "Needs Work" : filterRating}" filter.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2447,16 +3283,19 @@ function TraceMessage({
   projectId,
   isSelected,
   onSelect,
+  manualRating,
+  onManualRatingChange,
 }: {
   trace: any;
   traceMetric: any;
   projectId: string;
   isSelected: boolean;
   onSelect: (traceId: string, timestamp: Date) => void;
+  manualRating?: string;
+  onManualRatingChange: (traceId: string, rating: string | null) => void;
 }) {
-  const [selectedRating, setSelectedRating] = React.useState<string | null>(
-    null,
-  );
+  // Use the manual rating from props instead of local state
+  const selectedRating = manualRating || null;
 
   const traceData = api.traces.byId.useQuery(
     {
@@ -2538,11 +3377,9 @@ function TraceMessage({
         parsed = JSON.parse(parsed);
       }
 
-      let text = "";
-
-      // Extract outcome.output.text
+      // Try 1: Extract outcome.output.text with replacements FIRST
       if (parsed.outcome?.output?.text) {
-        text = parsed.outcome.output.text;
+        let text = parsed.outcome.output.text;
 
         // Replace placeholders with actual values from replacements
         if (parsed.outcome?.output?.replacements) {
@@ -2561,11 +3398,18 @@ function TraceMessage({
 
         return { text, isJson: false };
       }
-      // Fallback: try output.text
-      else if (parsed.output?.text) {
-        return { text: parsed.output.text, isJson: false };
+      // Try 2: Check if outcome.output exists (for cases without .text)
+      else if (parsed.outcome?.output !== undefined) {
+        // If outcome.output is a string, return it directly
+        if (typeof parsed.outcome.output === "string") {
+          return { text: parsed.outcome.output, isJson: false };
+        }
+        // If outcome.output is an object, return as JSON
+        else {
+          return { json: parsed.outcome.output, isJson: true };
+        }
       }
-      // If no text field found, return the whole object as JSON
+      // Final fallback: show the whole parsed object as JSON
       else {
         return { json: parsed, isJson: true };
       }
@@ -2661,11 +3505,11 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "correct" &&
-                      "bg-black text-white hover:bg-black/90",
+                      "bg-green-600 text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 border-green-600 dark:border-green-500",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedRating("correct");
+                    onManualRatingChange(trace.id, selectedRating === "correct" ? null : "correct");
                     toast.success("Response marked as correct");
                   }}
                 >
@@ -2680,11 +3524,11 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "needs-work" &&
-                      "bg-black text-white hover:bg-black/90",
+                      "bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-600 border-orange-600 dark:border-orange-500",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedRating("needs-work");
+                    onManualRatingChange(trace.id, selectedRating === "needs-work" ? null : "needs-work");
                     toast.success("Response marked as needs improvement");
                   }}
                 >
@@ -2697,11 +3541,11 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "wrong" &&
-                      "bg-black text-white hover:bg-black/90",
+                      "bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 border-red-600 dark:border-red-500",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedRating("wrong");
+                    onManualRatingChange(trace.id, selectedRating === "wrong" ? null : "wrong");
                     toast.success("Response marked as wrong");
                   }}
                 >
@@ -2715,69 +3559,69 @@ function TraceMessage({
                     className="h-7 text-xs"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedRating(null);
+                      onManualRatingChange(trace.id, null);
                       toast.info("Rating cleared");
                     }}
                   >
-                    Clear
-                  </Button>
-                )}
-              </div>
+                  Clear
+                </Button>
+              )}
+            </div>
 
-              {/* LLM Eval Section - Shows when genius-feedback score is available */}
-              {geniusFeedbackScore && (
-                <div className="mt-4 border-t pt-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
-                      <span className="text-xs text-white">⚡</span>
+            {/* LLM Eval Section - Shows when genius-feedback score is available */}
+            {geniusFeedbackScore && (
+              <div className="mt-4 border-t pt-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                    <span className="text-xs text-white">⚡</span>
+                  </div>
+                  <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    LLM Eval
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {/* Judge Response */}
+                  <div>
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">
+                      Judge Response:
                     </div>
-                    <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                      LLM Eval
-                    </span>
+                    <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
+                      <span
+                        className={cn(
+                          "text-sm font-semibold",
+                          geniusFeedbackScore.value === 1
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400",
+                        )}
+                      >
+                        {geniusFeedbackScore.value === 1
+                          ? "CORRECT"
+                          : "INCORRECT"}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    {/* Judge Response */}
+                  {/* Judgement Reason */}
+                  {geniusFeedbackScore.comment && (
                     <div>
                       <div className="mb-1 text-xs font-medium text-muted-foreground">
-                        Judge Response:
+                        Judgement Reason:
                       </div>
-                      <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
-                        <span
-                          className={cn(
-                            "text-sm font-semibold",
-                            geniusFeedbackScore.value === 1
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-red-600 dark:text-red-400",
-                          )}
-                        >
-                          {geniusFeedbackScore.value === 1
-                            ? "CORRECT"
-                            : "INCORRECT"}
-                        </span>
+                      <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+                        <div className="text-sm leading-relaxed">
+                          {geniusFeedbackScore.comment}
+                        </div>
                       </div>
                     </div>
-
-                    {/* Judgement Reason */}
-                    {geniusFeedbackScore.comment && (
-                      <div>
-                        <div className="mb-1 text-xs font-medium text-muted-foreground">
-                          Judgement Reason:
-                        </div>
-                        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
-                          <div className="text-sm leading-relaxed">
-                            {geniusFeedbackScore.comment}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-              )}
-
-              <div className="mt-2 text-xs text-muted-foreground">
-                Click to view tool calls →
               </div>
+            )}
+
+            <div className="mt-2 text-xs text-muted-foreground">
+              Click to view tool calls →
+            </div>
             </div>
           </div>
         </Card>
