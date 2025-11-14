@@ -84,9 +84,9 @@ export default function JuspayDashboard() {
   React.useEffect(() => {
     if (router.isReady && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      
+
       // If no dateRange parameter exists in URL, ensure it gets set
-      if (!params.has('dateRange')) {
+      if (!params.has("dateRange")) {
         // The hook should handle this, but let's ensure it happens
         // by triggering a setTimeRange with the current timeRange
         if (timeRange) {
@@ -109,8 +109,24 @@ export default function JuspayDashboard() {
     // Create fallback date range
     const today = new Date();
     return {
-      from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
-      to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+      from: new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+      to: new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
     };
   }, [tableDateRange]);
 
@@ -121,7 +137,9 @@ export default function JuspayDashboard() {
   const sessionIdFromUrl = router.query.sessionId as string | undefined;
   const merchantFilterUrl = router.query.merchantOnly as string | undefined;
   const teamFilterUrl = router.query.teamOnly as string | undefined;
-  const juspayOthersFilterUrl = router.query.juspayOthersOnly as string | undefined;
+  const juspayOthersFilterUrl = router.query.juspayOthersOnly as
+    | string
+    | undefined;
   const tagFilterUrl = router.query.tag as string | undefined;
   const correctFilterUrl = router.query.correct as string | undefined;
   const incorrectFilterUrl = router.query.incorrect as string | undefined;
@@ -215,7 +233,10 @@ export default function JuspayDashboard() {
 
     // Add team emails to URL for sharing
     if (filters.teamEmails && filters.teamEmails.length > 0) {
-      params.set("teamEmails", encodeURIComponent(JSON.stringify(filters.teamEmails)));
+      params.set(
+        "teamEmails",
+        encodeURIComponent(JSON.stringify(filters.teamEmails)),
+      );
     } else {
       params.delete("teamEmails");
     }
@@ -383,7 +404,7 @@ export default function JuspayDashboard() {
   const manualRatingsQuery = api.scores.getManualRatings.useQuery(
     {
       projectId,
-      traceIds: allSessionsTracesData.traces.map(t => t.id),
+      traceIds: allSessionsTracesData.traces.map((t) => t.id),
     },
     {
       enabled: !!projectId && allSessionsTracesData.traces.length > 0,
@@ -418,7 +439,7 @@ export default function JuspayDashboard() {
   const manualRatings = React.useMemo(() => {
     const ratingsMap = new Map<string, string>();
     if (manualRatingsQuery.data) {
-      manualRatingsQuery.data.forEach(rating => {
+      manualRatingsQuery.data.forEach((rating) => {
         ratingsMap.set(rating.traceId, rating.rating);
       });
     }
@@ -448,10 +469,10 @@ export default function JuspayDashboard() {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sessionPage, setSessionPage] = useState(0);
-  
+
   // Resizable panels state
   const [rightPanelWidth, setRightPanelWidth] = useState(450);
-  const [isResizing, setIsResizing] = useState<'right' | null>(null);
+  const [isResizing, setIsResizing] = useState<"right" | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileRightPanelOpen, setIsMobileRightPanelOpen] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -464,15 +485,15 @@ export default function JuspayDashboard() {
         from: newDateRange.from.toISOString(),
         to: newDateRange.to.toISOString(),
       });
-      
+
       // Cancel previous loading and start new one immediately
       setIsLoadingData(true);
-      
+
       // Clear existing data immediately to show loading state
       setAllSessions([]);
       setAllTraces([]);
       setAllScores([]);
-      
+
       // Reset pagination
       setSessionPage(0);
       setCurrentPage(0);
@@ -480,7 +501,7 @@ export default function JuspayDashboard() {
       setHasMoreSessions(true);
       setHasMoreTraces(true);
       setHasMoreScores(true);
-      
+
       // Set new date range (this will trigger new API calls)
       setTimeRange({ from: newDateRange.from, to: newDateRange.to });
     },
@@ -632,12 +653,12 @@ export default function JuspayDashboard() {
       setAllSessions([]);
       setSessionPage(0);
       setHasMoreSessions(true);
-      
+
       // Clear loading state after a short delay to prevent race conditions
       const timer = setTimeout(() => {
         setIsLoadingData(false);
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [projectId, dateRange?.from, dateRange?.to]);
@@ -901,45 +922,46 @@ export default function JuspayDashboard() {
         if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
           return "unknown";
         }
-        
+
         const userId = userIds[0];
-        
+
         // Check if user is in team whitelist - more flexible matching
-        if (teamEmails.some(email => {
-          const emailLower = email.toLowerCase().trim();
-          const userIdLower = userId.toLowerCase().trim();
-          
-          // Try exact match first
-          if (userIdLower === emailLower) return true;
-          
-          // Try contains match (user ID contains the email)
-          if (userIdLower.includes(emailLower)) return true;
-          
-          // Try email contains user ID (for partial email matches)
-          if (emailLower.includes(userIdLower)) return true;
-          
-          // Try domain matching if email has @ symbol
-          if (emailLower.includes('@')) {
-            const emailDomain = emailLower.split('@')[1];
-            const emailUsername = emailLower.split('@')[0];
-            
-            // Check if user ID matches username part
-            if (userIdLower === emailUsername) return true;
-            
-            // Check if user ID contains username
-            if (userIdLower.includes(emailUsername)) return true;
-          }
-          
-          return false;
-        })) {
+        if (
+          teamEmails.some((email) => {
+            const emailLower = email.toLowerCase().trim();
+            const userIdLower = userId.toLowerCase().trim();
+
+            // Try exact match first
+            if (userIdLower === emailLower) return true;
+
+            // Try contains match (user ID contains the email)
+            if (userIdLower.includes(emailLower)) return true;
+
+            // Try email contains user ID (for partial email matches)
+            if (emailLower.includes(userIdLower)) return true;
+
+            // Try domain matching if email has @ symbol
+            if (emailLower.includes("@")) {
+              const emailUsername = emailLower.split("@")[0];
+
+              // Check if user ID matches username part
+              if (userIdLower === emailUsername) return true;
+
+              // Check if user ID contains username
+              if (userIdLower.includes(emailUsername)) return true;
+            }
+
+            return false;
+          })
+        ) {
           return "team";
         }
-        
+
         // Check if user is juspay internal (contains @juspay)
         if (userId.toLowerCase().includes("@juspay")) {
           return "juspay-genius-merchant";
         }
-        
+
         // Otherwise it's a merchant
         return "merchant";
       };
@@ -948,11 +970,11 @@ export default function JuspayDashboard() {
 
       // Category filters - if any are checked, show only those categories
       if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
-        const matchesSelectedCategories = 
+        const matchesSelectedCategories =
           (showOnlyMerchant && userCategory === "merchant") ||
           (showOnlyTeam && userCategory === "team") ||
           (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
-        
+
         if (!matchesSelectedCategories) {
           return false;
         }
@@ -1029,45 +1051,46 @@ export default function JuspayDashboard() {
       if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
         return "unknown";
       }
-      
+
       const userId = userIds[0];
-      
+
       // Check if user is in team whitelist - more flexible matching
-      if (teamEmails.some(email => {
-        const emailLower = email.toLowerCase().trim();
-        const userIdLower = userId.toLowerCase().trim();
-        
-        // Try exact match first
-        if (userIdLower === emailLower) return true;
-        
-        // Try contains match (user ID contains the email)
-        if (userIdLower.includes(emailLower)) return true;
-        
-        // Try email contains user ID (for partial email matches)
-        if (emailLower.includes(userIdLower)) return true;
-        
-        // Try domain matching if email has @ symbol
-        if (emailLower.includes('@')) {
-          const emailDomain = emailLower.split('@')[1];
-          const emailUsername = emailLower.split('@')[0];
-          
-          // Check if user ID matches username part
-          if (userIdLower === emailUsername) return true;
-          
-          // Check if user ID contains username
-          if (userIdLower.includes(emailUsername)) return true;
-        }
-        
-        return false;
-      })) {
+      if (
+        teamEmails.some((email) => {
+          const emailLower = email.toLowerCase().trim();
+          const userIdLower = userId.toLowerCase().trim();
+
+          // Try exact match first
+          if (userIdLower === emailLower) return true;
+
+          // Try contains match (user ID contains the email)
+          if (userIdLower.includes(emailLower)) return true;
+
+          // Try email contains user ID (for partial email matches)
+          if (emailLower.includes(userIdLower)) return true;
+
+          // Try domain matching if email has @ symbol
+          if (emailLower.includes("@")) {
+            const emailUsername = emailLower.split("@")[0];
+
+            // Check if user ID matches username part
+            if (userIdLower === emailUsername) return true;
+
+            // Check if user ID contains username
+            if (userIdLower.includes(emailUsername)) return true;
+          }
+
+          return false;
+        })
+      ) {
         return "team";
       }
-      
+
       // Check if user is juspay internal (contains @juspay)
       if (userId.toLowerCase().includes("@juspay")) {
         return "juspay-genius-merchant";
       }
-      
+
       // Otherwise it's a merchant
       return "merchant";
     };
@@ -1088,11 +1111,11 @@ export default function JuspayDashboard() {
 
       // Category filters - if any are checked, show only those categories
       if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
-        const matchesSelectedCategories = 
+        const matchesSelectedCategories =
           (showOnlyMerchant && userCategory === "merchant") ||
           (showOnlyTeam && userCategory === "team") ||
           (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
-        
+
         if (!matchesSelectedCategories) {
           return false;
         }
@@ -1117,7 +1140,9 @@ export default function JuspayDashboard() {
     });
 
     // Get session IDs from sessions for statistics
-    const sessionIdsForStats = new Set(sessionsForStats.map(session => session.id));
+    const sessionIdsForStats = new Set(
+      sessionsForStats.map((session) => session.id),
+    );
 
     // Filter traces to only include those from sessions for statistics
     const tracesForStats = allSessionsTracesData.traces.filter((trace) => {
@@ -1202,45 +1227,46 @@ export default function JuspayDashboard() {
       if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
         return "unknown";
       }
-      
+
       const userId = userIds[0];
-      
+
       // Check if user is in team whitelist - more flexible matching
-      if (teamEmails.some(email => {
-        const emailLower = email.toLowerCase().trim();
-        const userIdLower = userId.toLowerCase().trim();
-        
-        // Try exact match first
-        if (userIdLower === emailLower) return true;
-        
-        // Try contains match (user ID contains the email)
-        if (userIdLower.includes(emailLower)) return true;
-        
-        // Try email contains user ID (for partial email matches)
-        if (emailLower.includes(userIdLower)) return true;
-        
-        // Try domain matching if email has @ symbol
-        if (emailLower.includes('@')) {
-          const emailDomain = emailLower.split('@')[1];
-          const emailUsername = emailLower.split('@')[0];
-          
-          // Check if user ID matches username part
-          if (userIdLower === emailUsername) return true;
-          
-          // Check if user ID contains username
-          if (userIdLower.includes(emailUsername)) return true;
-        }
-        
-        return false;
-      })) {
+      if (
+        teamEmails.some((email) => {
+          const emailLower = email.toLowerCase().trim();
+          const userIdLower = userId.toLowerCase().trim();
+
+          // Try exact match first
+          if (userIdLower === emailLower) return true;
+
+          // Try contains match (user ID contains the email)
+          if (userIdLower.includes(emailLower)) return true;
+
+          // Try email contains user ID (for partial email matches)
+          if (emailLower.includes(userIdLower)) return true;
+
+          // Try domain matching if email has @ symbol
+          if (emailLower.includes("@")) {
+            const emailUsername = emailLower.split("@")[0];
+
+            // Check if user ID matches username part
+            if (userIdLower === emailUsername) return true;
+
+            // Check if user ID contains username
+            if (userIdLower.includes(emailUsername)) return true;
+          }
+
+          return false;
+        })
+      ) {
         return "team";
       }
-      
+
       // Check if user is juspay internal (contains @juspay)
       if (userId.toLowerCase().includes("@juspay")) {
         return "juspay-genius-merchant";
       }
-      
+
       // Otherwise it's a merchant
       return "merchant";
     };
@@ -1278,7 +1304,9 @@ export default function JuspayDashboard() {
     });
 
     // Get session IDs from sessions for card statistics
-    const sessionIdsForCardStats = new Set(sessionsForCardStats.map(session => session.id));
+    const sessionIdsForCardStats = new Set(
+      sessionsForCardStats.map((session) => session.id),
+    );
 
     // Filter traces to only include those from sessions for card statistics
     const tracesForCardStats = allSessionsTracesData.traces.filter((trace) => {
@@ -1300,7 +1328,9 @@ export default function JuspayDashboard() {
     let juspayGeniusMerchantQueries = 0;
 
     tracesForCardStats.forEach((trace) => {
-      const session = allSessionsData.sessions.find(s => s.id === trace.sessionId);
+      const session = allSessionsData.sessions.find(
+        (s) => s.id === trace.sessionId,
+      );
       if (session) {
         const userCategory = categorizeUser(session.userIds);
         switch (userCategory) {
@@ -1348,21 +1378,29 @@ export default function JuspayDashboard() {
 
   // Auto-scroll to selected session only when needed (page refresh or URL navigation)
   const [hasAutoScrolled, setHasAutoScrolled] = React.useState(false);
-  
+
   React.useEffect(() => {
-    if (selectedSessionId && filteredSessions.length > 0 && !sessions.isLoading && !hasAutoScrolled && sessionIdFromUrl) {
+    if (
+      selectedSessionId &&
+      filteredSessions.length > 0 &&
+      !sessions.isLoading &&
+      !hasAutoScrolled &&
+      sessionIdFromUrl
+    ) {
       const timer = setTimeout(() => {
-        const selectedElement = document.querySelector(`[data-session-id="${selectedSessionId}"]`);
+        const selectedElement = document.querySelector(
+          `[data-session-id="${selectedSessionId}"]`,
+        );
         if (selectedElement) {
           // Check if element is already visible
           const rect = selectedElement.getBoundingClientRect();
           const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
-          
+
           // Only scroll if not visible
           if (!isVisible) {
             selectedElement.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center',
+              behavior: "smooth",
+              block: "center",
             });
           }
           setHasAutoScrolled(true);
@@ -1371,7 +1409,13 @@ export default function JuspayDashboard() {
 
       return () => clearTimeout(timer);
     }
-  }, [selectedSessionId, filteredSessions.length, sessions.isLoading, hasAutoScrolled, sessionIdFromUrl]);
+  }, [
+    selectedSessionId,
+    filteredSessions.length,
+    sessions.isLoading,
+    hasAutoScrolled,
+    sessionIdFromUrl,
+  ]);
 
   // Reset auto-scroll flag when session changes manually (not from URL)
   React.useEffect(() => {
@@ -1384,22 +1428,28 @@ export default function JuspayDashboard() {
   const [dragStartX, setDragStartX] = React.useState(0);
   const [dragStartWidth, setDragStartWidth] = React.useState(0);
 
-  const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing('right');
-    setDragStartX(e.clientX);
-    setDragStartWidth(rightPanelWidth);
-  }, [rightPanelWidth]);
+  const handleMouseDown = React.useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizing("right");
+      setDragStartX(e.clientX);
+      setDragStartWidth(rightPanelWidth);
+    },
+    [rightPanelWidth],
+  );
 
-  const handleMouseMove = React.useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
+  const handleMouseMove = React.useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
 
-    const deltaX = e.clientX - dragStartX;
+      const deltaX = e.clientX - dragStartX;
 
-    // For right panel, subtract the delta from the starting width
-    const newWidth = Math.max(300, Math.min(800, dragStartWidth - deltaX));
-    setRightPanelWidth(newWidth);
-  }, [isResizing, dragStartX, dragStartWidth]);
+      // For right panel, subtract the delta from the starting width
+      const newWidth = Math.max(300, Math.min(800, dragStartWidth - deltaX));
+      setRightPanelWidth(newWidth);
+    },
+    [isResizing, dragStartX, dragStartWidth],
+  );
 
   const handleMouseUp = React.useCallback(() => {
     setIsResizing(null);
@@ -1408,16 +1458,16 @@ export default function JuspayDashboard() {
   // Add mouse event listeners
   React.useEffect(() => {
     if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
 
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
       };
     }
   }, [isResizing, handleMouseMove, handleMouseUp]);
@@ -1430,10 +1480,10 @@ export default function JuspayDashboard() {
       setWindowWidth(window.innerWidth);
     };
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setWindowWidth(window.innerWidth);
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
     }
   }, []);
 
@@ -1445,9 +1495,24 @@ export default function JuspayDashboard() {
   const detailedStatistics = React.useMemo(() => {
     if (!allSessionsTracesData.traces.length) {
       return {
-        merchant: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
-        team: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
-        other: { totalSessions: 0, totalQueries: 0, incorrectQueries: 0, accuracy: 0 },
+        merchant: {
+          totalSessions: 0,
+          totalQueries: 0,
+          incorrectQueries: 0,
+          accuracy: 0,
+        },
+        team: {
+          totalSessions: 0,
+          totalQueries: 0,
+          incorrectQueries: 0,
+          accuracy: 0,
+        },
+        other: {
+          totalSessions: 0,
+          totalQueries: 0,
+          incorrectQueries: 0,
+          accuracy: 0,
+        },
       };
     }
 
@@ -1456,27 +1521,32 @@ export default function JuspayDashboard() {
       if (!userIds || userIds.length === 0 || userIds[0] === "Unknown User") {
         return "unknown";
       }
-      
+
       const userId = userIds[0];
-      
+
       // Check if user is in team whitelist
-      if (teamEmails.some(email => {
-        const emailLower = email.toLowerCase().trim();
-        const userIdLower = userId.toLowerCase().trim();
-        
-        return userIdLower === emailLower || 
-               userIdLower.includes(emailLower) || 
-               emailLower.includes(userIdLower) ||
-               (emailLower.includes('@') && userIdLower === emailLower.split('@')[0]);
-      })) {
+      if (
+        teamEmails.some((email) => {
+          const emailLower = email.toLowerCase().trim();
+          const userIdLower = userId.toLowerCase().trim();
+
+          return (
+            userIdLower === emailLower ||
+            userIdLower.includes(emailLower) ||
+            emailLower.includes(userIdLower) ||
+            (emailLower.includes("@") &&
+              userIdLower === emailLower.split("@")[0])
+          );
+        })
+      ) {
         return "team";
       }
-      
+
       // Check if user is juspay internal
       if (userId.toLowerCase().includes("@juspay")) {
         return "juspay-genius-merchant";
       }
-      
+
       return "merchant";
     };
 
@@ -1494,11 +1564,11 @@ export default function JuspayDashboard() {
       const userCategory = categorizeUser(session.userIds);
 
       if (showOnlyMerchant || showOnlyTeam || showOnlyJuspayOthers) {
-        const matchesSelectedCategories = 
+        const matchesSelectedCategories =
           (showOnlyMerchant && userCategory === "merchant") ||
           (showOnlyTeam && userCategory === "team") ||
           (showOnlyJuspayOthers && userCategory === "juspay-genius-merchant");
-        
+
         if (!matchesSelectedCategories) return false;
       }
 
@@ -1514,29 +1584,42 @@ export default function JuspayDashboard() {
 
     // Group sessions by category
     const sessionsByCategory = {
-      merchant: sessionsForStats.filter(s => categorizeUser(s.userIds) === "merchant"),
-      team: sessionsForStats.filter(s => categorizeUser(s.userIds) === "team"),
-      other: sessionsForStats.filter(s => categorizeUser(s.userIds) === "juspay-genius-merchant"),
+      merchant: sessionsForStats.filter(
+        (s) => categorizeUser(s.userIds) === "merchant",
+      ),
+      team: sessionsForStats.filter(
+        (s) => categorizeUser(s.userIds) === "team",
+      ),
+      other: sessionsForStats.filter(
+        (s) => categorizeUser(s.userIds) === "juspay-genius-merchant",
+      ),
     };
 
     // Calculate stats for each category
-    const calculateCategoryStats = (sessions: any[], category: string) => {
-      const sessionIds = new Set(sessions.map(s => s.id));
-      
+    const calculateCategoryStats = (sessions: any[]) => {
+      const sessionIds = new Set(sessions.map((s) => s.id));
+
       // Get traces for these sessions
-      const categoryTraces = allSessionsTracesData.traces.filter(trace => 
-        trace.sessionId && sessionIds.has(trace.sessionId)
+      const categoryTraces = allSessionsTracesData.traces.filter(
+        (trace) => trace.sessionId && sessionIds.has(trace.sessionId),
       );
 
       // Get scores for these traces
-      const categoryScores = allScoresData.scores.filter(score => 
-        categoryTraces.some(trace => trace.id === score.traceId)
+      const categoryScores = allScoresData.scores.filter((score) =>
+        categoryTraces.some((trace) => trace.id === score.traceId),
       );
 
-      const correctQueries = categoryScores.filter(score => score.value === 1).length;
-      const incorrectQueries = categoryScores.filter(score => score.value === 0).length;
+      const correctQueries = categoryScores.filter(
+        (score) => score.value === 1,
+      ).length;
+      const incorrectQueries = categoryScores.filter(
+        (score) => score.value === 0,
+      ).length;
       const totalEvaluated = correctQueries + incorrectQueries;
-      const accuracy = totalEvaluated > 0 ? Math.round((correctQueries / totalEvaluated) * 100) : 0;
+      const accuracy =
+        totalEvaluated > 0
+          ? Math.round((correctQueries / totalEvaluated) * 100)
+          : 0;
 
       return {
         totalSessions: sessions.length,
@@ -1547,9 +1630,9 @@ export default function JuspayDashboard() {
     };
 
     return {
-      merchant: calculateCategoryStats(sessionsByCategory.merchant, "merchant"),
-      team: calculateCategoryStats(sessionsByCategory.team, "team"),
-      other: calculateCategoryStats(sessionsByCategory.other, "other"),
+      merchant: calculateCategoryStats(sessionsByCategory.merchant),
+      team: calculateCategoryStats(sessionsByCategory.team),
+      other: calculateCategoryStats(sessionsByCategory.other),
     };
   }, [
     allSessionsTracesData.traces,
@@ -1578,7 +1661,7 @@ export default function JuspayDashboard() {
       <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
         {/* Mobile Menu Button - Only show when sidebar is closed */}
         {isMobile && !isMobileMenuOpen && (
-          <div className="absolute top-6 left-4 z-50 lg:hidden shadow-lg">
+          <div className="absolute left-4 top-6 z-50 shadow-lg lg:hidden">
             <Button
               variant="outline"
               size="sm"
@@ -1591,31 +1674,31 @@ export default function JuspayDashboard() {
 
         {/* Mobile Overlay */}
         {isMobile && isMobileMenuOpen && (
-          <div 
+          <div
             className="absolute inset-0 z-30 bg-black/50"
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
         {/* Left Sidebar - Sessions List */}
-        <div 
+        <div
           className={cn(
             "border-r bg-background transition-all duration-300",
-            isMobile 
+            isMobile
               ? cn(
                   "absolute inset-y-0 left-0 z-40 w-80 transform",
-                  isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+                  isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
                 )
-              : isTablet 
-                ? "w-72" 
-                : "w-84"
+              : isTablet
+                ? "w-72"
+                : "w-84",
           )}
           style={undefined}
         >
           <div className="flex h-full flex-col">
             {/* Mobile Close Button - Inside sidebar */}
             {isMobile && (
-              <div className="flex items-center justify-between border-b p-3 flex-shrink-0">
+              <div className="flex flex-shrink-0 items-center justify-between border-b p-3">
                 <h2 className="text-lg font-semibold">Filters</h2>
                 <Button
                   variant="ghost"
@@ -1628,32 +1711,38 @@ export default function JuspayDashboard() {
             )}
 
             {/* Date Range Filter - Always visible */}
-            <div className={cn(
-              "border-b flex-shrink-0",
-              isMobile ? "pt-8 px-3 pb-4" : "p-4"
-            )}>
+            <div
+              className={cn(
+                "flex-shrink-0 border-b",
+                isMobile ? "px-3 pb-4 pt-8" : "p-4",
+              )}
+            >
               <Collapsible
                 open={showDatePicker}
                 onOpenChange={setShowDatePicker}
               >
                 <CollapsibleTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "w-full justify-start h-auto py-3 px-3",
-                        isMobile ? "min-h-[6rem]" : "min-h-[3rem]"
-                      )}
-                    >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-auto w-full justify-start px-3 py-3",
+                      isMobile ? "min-h-[6rem]" : "min-h-[3rem]",
+                    )}
+                  >
                     <Calendar className="mr-2 h-4 w-4 flex-shrink-0" />
-                    <div className="flex flex-col items-start text-left flex-1 min-w-0 gap-1">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
+                      <span className="whitespace-nowrap text-xs text-muted-foreground">
                         Select date range
                       </span>
-                      <span className={cn(
-                        "font-medium w-full leading-tight",
-                        isMobile ? "text-xs break-words" : "text-xs break-words"
-                      )}>
+                      <span
+                        className={cn(
+                          "w-full font-medium leading-tight",
+                          isMobile
+                            ? "break-words text-xs"
+                            : "break-words text-xs",
+                        )}
+                      >
                         {dateRange.from.toLocaleDateString()} -{" "}
                         {dateRange.to.toLocaleDateString()}
                       </span>
@@ -1674,8 +1763,24 @@ export default function JuspayDashboard() {
                           onClick={() => {
                             const today = new Date();
                             const newRange = {
-                              from: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0),
-                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+                              from: new Date(
+                                today.getFullYear(),
+                                today.getMonth(),
+                                today.getDate(),
+                                0,
+                                0,
+                                0,
+                                0,
+                              ),
+                              to: new Date(
+                                today.getFullYear(),
+                                today.getMonth(),
+                                today.getDate(),
+                                23,
+                                59,
+                                59,
+                                999,
+                              ),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -1688,10 +1793,30 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+                            const yesterday = new Date(
+                              today.getFullYear(),
+                              today.getMonth(),
+                              today.getDate() - 1,
+                            );
                             const newRange = {
-                              from: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0),
-                              to: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999),
+                              from: new Date(
+                                yesterday.getFullYear(),
+                                yesterday.getMonth(),
+                                yesterday.getDate(),
+                                0,
+                                0,
+                                0,
+                                0,
+                              ),
+                              to: new Date(
+                                yesterday.getFullYear(),
+                                yesterday.getMonth(),
+                                yesterday.getDate(),
+                                23,
+                                59,
+                                59,
+                                999,
+                              ),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -1704,10 +1829,30 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last7Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
+                            const last7Days = new Date(
+                              today.getFullYear(),
+                              today.getMonth(),
+                              today.getDate() - 7,
+                            );
                             const newRange = {
-                              from: new Date(last7Days.getFullYear(), last7Days.getMonth(), last7Days.getDate(), 0, 0, 0, 0),
-                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+                              from: new Date(
+                                last7Days.getFullYear(),
+                                last7Days.getMonth(),
+                                last7Days.getDate(),
+                                0,
+                                0,
+                                0,
+                                0,
+                              ),
+                              to: new Date(
+                                today.getFullYear(),
+                                today.getMonth(),
+                                today.getDate(),
+                                23,
+                                59,
+                                59,
+                                999,
+                              ),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -1720,10 +1865,30 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last30Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
+                            const last30Days = new Date(
+                              today.getFullYear(),
+                              today.getMonth(),
+                              today.getDate() - 30,
+                            );
                             const newRange = {
-                              from: new Date(last30Days.getFullYear(), last30Days.getMonth(), last30Days.getDate(), 0, 0, 0, 0),
-                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+                              from: new Date(
+                                last30Days.getFullYear(),
+                                last30Days.getMonth(),
+                                last30Days.getDate(),
+                                0,
+                                0,
+                                0,
+                                0,
+                              ),
+                              to: new Date(
+                                today.getFullYear(),
+                                today.getMonth(),
+                                today.getDate(),
+                                23,
+                                59,
+                                59,
+                                999,
+                              ),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -1736,10 +1901,30 @@ export default function JuspayDashboard() {
                           className="w-full justify-start text-xs"
                           onClick={() => {
                             const today = new Date();
-                            const last90Days = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90);
+                            const last90Days = new Date(
+                              today.getFullYear(),
+                              today.getMonth(),
+                              today.getDate() - 90,
+                            );
                             const newRange = {
-                              from: new Date(last90Days.getFullYear(), last90Days.getMonth(), last90Days.getDate(), 0, 0, 0, 0),
-                              to: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
+                              from: new Date(
+                                last90Days.getFullYear(),
+                                last90Days.getMonth(),
+                                last90Days.getDate(),
+                                0,
+                                0,
+                                0,
+                                0,
+                              ),
+                              to: new Date(
+                                today.getFullYear(),
+                                today.getMonth(),
+                                today.getDate(),
+                                23,
+                                59,
+                                59,
+                                999,
+                              ),
                             };
                             handleDateRangeChange(newRange);
                           }}
@@ -1767,12 +1952,32 @@ export default function JuspayDashboard() {
                               }}
                               onSelect={(range: any) => {
                                 if (range?.from) {
-                                  const fromDate = new Date(range.from.getTime());
-                                  const toDate = range.to ? new Date(range.to.getTime()) : new Date(range.from.getTime());
-                                  
+                                  const fromDate = new Date(
+                                    range.from.getTime(),
+                                  );
+                                  const toDate = range.to
+                                    ? new Date(range.to.getTime())
+                                    : new Date(range.from.getTime());
+
                                   const newRange = {
-                                    from: new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0, 0),
-                                    to: new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999),
+                                    from: new Date(
+                                      fromDate.getFullYear(),
+                                      fromDate.getMonth(),
+                                      fromDate.getDate(),
+                                      0,
+                                      0,
+                                      0,
+                                      0,
+                                    ),
+                                    to: new Date(
+                                      toDate.getFullYear(),
+                                      toDate.getMonth(),
+                                      toDate.getDate(),
+                                      23,
+                                      59,
+                                      59,
+                                      999,
+                                    ),
                                   };
                                   handleDateRangeChange(newRange);
                                 }
@@ -1789,10 +1994,12 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Enhanced Statistics Section */}
-            <div className={cn(
-              "border-b flex-shrink-0",
-              isMobile ? "px-3 py-4" : "p-4"
-            )}>
+            <div
+              className={cn(
+                "flex-shrink-0 border-b",
+                isMobile ? "px-3 py-4" : "p-4",
+              )}
+            >
               {sessions.isLoading ? (
                 <Skeleton className="h-32 w-full" />
               ) : (
@@ -1800,7 +2007,9 @@ export default function JuspayDashboard() {
                   {/* Main Stats Card */}
                   <div className="rounded-lg border bg-gradient-to-r from-blue-50 to-purple-50 p-4 dark:from-blue-950/20 dark:to-purple-950/20">
                     <div className="mb-3 flex items-center gap-2">
-                      <span className="text-blue-600 dark:text-blue-400">📊</span>
+                      <span className="text-blue-600 dark:text-blue-400">
+                        📊
+                      </span>
                       <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
                         {filteredSessions && filteredSessions.length > 100
                           ? "100+"
@@ -1845,97 +2054,138 @@ export default function JuspayDashboard() {
                   {/* Query Categories - Now Clickable Filter Buttons */}
                   <div className="grid grid-cols-3 gap-2">
                     {/* Merchant Queries - Clickable */}
-                    <div 
+                    <div
                       className={cn(
-                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
-                        showOnlyMerchant 
-                          ? "bg-green-100 border-green-500 ring-2 ring-green-200 dark:bg-green-900/40 dark:border-green-400" 
-                          : "bg-green-50 border-green-200 hover:bg-green-100 dark:bg-green-950/20 dark:border-green-800 dark:hover:bg-green-900/30"
+                        "cursor-pointer rounded-lg border p-2 text-center transition-all duration-200 hover:scale-105",
+                        showOnlyMerchant
+                          ? "border-green-500 bg-green-100 ring-2 ring-green-200 dark:border-green-400 dark:bg-green-900/40"
+                          : "border-green-200 bg-green-50 hover:bg-green-100 dark:border-green-800 dark:bg-green-950/20 dark:hover:bg-green-900/30",
                       )}
-                      onClick={() => handleShowOnlyMerchantChange(!showOnlyMerchant)}
+                      onClick={() =>
+                        handleShowOnlyMerchantChange(!showOnlyMerchant)
+                      }
                     >
-                      <div className={cn(
-                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        cardStatistics.merchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        cardStatistics.merchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
-                        "h-10 w-10 text-xs",
-                        showOnlyMerchant ? "bg-green-600" : "bg-green-500"
-                      )}>
-                        {cardStatistics.merchantQueries > 9999 ? "9999+" : cardStatistics.merchantQueries}
+                      <div
+                        className={cn(
+                          "relative mx-auto mb-1 flex items-center justify-center rounded-full font-bold text-white",
+                          cardStatistics.merchantQueries.toString().length <= 2
+                            ? "h-8 w-8 text-xs"
+                            : cardStatistics.merchantQueries.toString()
+                                  .length === 3
+                              ? "h-9 w-9 text-xs"
+                              : "h-10 w-10 text-xs",
+                          showOnlyMerchant ? "bg-green-600" : "bg-green-500",
+                        )}
+                      >
+                        {cardStatistics.merchantQueries > 9999
+                          ? "9999+"
+                          : cardStatistics.merchantQueries}
                         {showOnlyMerchant && (
-                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-green-600 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs">✓</span>
+                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-green-600">
+                            <span className="text-xs text-white">✓</span>
                           </div>
                         )}
                       </div>
-                      <div className={cn(
-                        "text-xs font-medium",
-                        showOnlyMerchant ? "text-green-800 dark:text-green-300" : "text-green-700 dark:text-green-400"
-                      )}>
+                      <div
+                        className={cn(
+                          "text-xs font-medium",
+                          showOnlyMerchant
+                            ? "text-green-800 dark:text-green-300"
+                            : "text-green-700 dark:text-green-400",
+                        )}
+                      >
                         Merchant
                       </div>
                     </div>
 
                     {/* Genius Team Queries - Clickable */}
-                    <div 
+                    <div
                       className={cn(
-                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
-                        showOnlyTeam 
-                          ? "bg-blue-100 border-blue-500 ring-2 ring-blue-200 dark:bg-blue-900/40 dark:border-blue-400" 
-                          : "bg-blue-50 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/20 dark:border-blue-800 dark:hover:bg-blue-900/30"
+                        "cursor-pointer rounded-lg border p-2 text-center transition-all duration-200 hover:scale-105",
+                        showOnlyTeam
+                          ? "border-blue-500 bg-blue-100 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-900/40"
+                          : "border-blue-200 bg-blue-50 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/20 dark:hover:bg-blue-900/30",
                       )}
                       onClick={() => handleShowOnlyTeamChange(!showOnlyTeam)}
                     >
-                      <div className={cn(
-                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        cardStatistics.geniusTeamQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        cardStatistics.geniusTeamQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
-                        "h-10 w-10 text-xs",
-                        showOnlyTeam ? "bg-blue-600" : "bg-blue-500"
-                      )}>
-                        {cardStatistics.geniusTeamQueries > 9999 ? "9999+" : cardStatistics.geniusTeamQueries}
+                      <div
+                        className={cn(
+                          "relative mx-auto mb-1 flex items-center justify-center rounded-full font-bold text-white",
+                          cardStatistics.geniusTeamQueries.toString().length <=
+                            2
+                            ? "h-8 w-8 text-xs"
+                            : cardStatistics.geniusTeamQueries.toString()
+                                  .length === 3
+                              ? "h-9 w-9 text-xs"
+                              : "h-10 w-10 text-xs",
+                          showOnlyTeam ? "bg-blue-600" : "bg-blue-500",
+                        )}
+                      >
+                        {cardStatistics.geniusTeamQueries > 9999
+                          ? "9999+"
+                          : cardStatistics.geniusTeamQueries}
                         {showOnlyTeam && (
-                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-blue-600 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs">✓</span>
+                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-blue-600">
+                            <span className="text-xs text-white">✓</span>
                           </div>
                         )}
                       </div>
-                      <div className={cn(
-                        "text-xs font-medium",
-                        showOnlyTeam ? "text-blue-800 dark:text-blue-300" : "text-blue-700 dark:text-blue-400"
-                      )}>
+                      <div
+                        className={cn(
+                          "text-xs font-medium",
+                          showOnlyTeam
+                            ? "text-blue-800 dark:text-blue-300"
+                            : "text-blue-700 dark:text-blue-400",
+                        )}
+                      >
                         Team
                       </div>
                     </div>
 
                     {/* Juspay-Genius-Merchant Queries - Clickable */}
-                    <div 
+                    <div
                       className={cn(
-                        "rounded-lg border p-2 text-center cursor-pointer transition-all duration-200 hover:scale-105",
-                        showOnlyJuspayOthers 
-                          ? "bg-purple-100 border-purple-500 ring-2 ring-purple-200 dark:bg-purple-900/40 dark:border-purple-400" 
-                          : "bg-purple-50 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/20 dark:border-purple-800 dark:hover:bg-purple-900/30"
+                        "cursor-pointer rounded-lg border p-2 text-center transition-all duration-200 hover:scale-105",
+                        showOnlyJuspayOthers
+                          ? "border-purple-500 bg-purple-100 ring-2 ring-purple-200 dark:border-purple-400 dark:bg-purple-900/40"
+                          : "border-purple-200 bg-purple-50 hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-950/20 dark:hover:bg-purple-900/30",
                       )}
-                      onClick={() => handleShowOnlyJuspayOthersChange(!showOnlyJuspayOthers)}
+                      onClick={() =>
+                        handleShowOnlyJuspayOthersChange(!showOnlyJuspayOthers)
+                      }
                     >
-                      <div className={cn(
-                        "flex mx-auto items-center justify-center rounded-full font-bold text-white mb-1 relative",
-                        cardStatistics.juspayGeniusMerchantQueries.toString().length <= 2 ? "h-8 w-8 text-xs" :
-                        cardStatistics.juspayGeniusMerchantQueries.toString().length === 3 ? "h-9 w-9 text-xs" :
-                        "h-10 w-10 text-xs",
-                        showOnlyJuspayOthers ? "bg-purple-600" : "bg-purple-500"
-                      )}>
-                        {cardStatistics.juspayGeniusMerchantQueries > 9999 ? "9999+" : cardStatistics.juspayGeniusMerchantQueries}
+                      <div
+                        className={cn(
+                          "relative mx-auto mb-1 flex items-center justify-center rounded-full font-bold text-white",
+                          cardStatistics.juspayGeniusMerchantQueries.toString()
+                            .length <= 2
+                            ? "h-8 w-8 text-xs"
+                            : cardStatistics.juspayGeniusMerchantQueries.toString()
+                                  .length === 3
+                              ? "h-9 w-9 text-xs"
+                              : "h-10 w-10 text-xs",
+                          showOnlyJuspayOthers
+                            ? "bg-purple-600"
+                            : "bg-purple-500",
+                        )}
+                      >
+                        {cardStatistics.juspayGeniusMerchantQueries > 9999
+                          ? "9999+"
+                          : cardStatistics.juspayGeniusMerchantQueries}
                         {showOnlyJuspayOthers && (
-                          <div className="absolute -top-1 -right-1 h-3 w-3 bg-purple-600 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs">✓</span>
+                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-purple-600">
+                            <span className="text-xs text-white">✓</span>
                           </div>
                         )}
                       </div>
-                      <div className={cn(
-                        "text-xs font-medium",
-                        showOnlyJuspayOthers ? "text-purple-800 dark:text-purple-300" : "text-purple-700 dark:text-purple-400"
-                      )}>
+                      <div
+                        className={cn(
+                          "text-xs font-medium",
+                          showOnlyJuspayOthers
+                            ? "text-purple-800 dark:text-purple-300"
+                            : "text-purple-700 dark:text-purple-400",
+                        )}
+                      >
                         Other
                       </div>
                     </div>
@@ -1945,10 +2195,12 @@ export default function JuspayDashboard() {
             </div>
 
             {/* Search and Filters */}
-            <div className={cn(
-              "space-y-3 border-b flex-shrink-0",
-              isMobile ? "px-3 py-3" : "p-4"
-            )}>
+            <div
+              className={cn(
+                "flex-shrink-0 space-y-3 border-b",
+                isMobile ? "px-3 py-3" : "p-4",
+              )}
+            >
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -2041,9 +2293,9 @@ export default function JuspayDashboard() {
                     </div>
 
                     {/* Show More Filters Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="w-full"
                       onClick={() => setShowAdvancedFilters(true)}
                     >
@@ -2058,16 +2310,18 @@ export default function JuspayDashboard() {
               {showAdvancedFilters && (
                 <>
                   {/* Overlay Background */}
-                  <div 
+                  <div
                     className="fixed inset-0 z-50 bg-black/50"
                     onClick={() => setShowAdvancedFilters(false)}
                   />
-                  
+
                   {/* Advanced Filters Modal */}
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <Card className="w-full max-w-md bg-background shadow-lg">
                       <div className="flex items-center justify-between border-b p-4">
-                        <h3 className="text-lg font-semibold">Advanced Filters</h3>
+                        <h3 className="text-lg font-semibold">
+                          Advanced Filters
+                        </h3>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -2076,12 +2330,12 @@ export default function JuspayDashboard() {
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      
-                      <div className="p-4 space-y-4">
+
+                      <div className="space-y-4 p-4">
                         {/* Team Email Selection with Dropdown */}
                         <div className="space-y-2">
                           <label className="text-sm font-medium">
-                             Team Emails
+                            Team Emails
                           </label>
                           <div className="space-y-2">
                             {/* Email Dropdown with Search */}
@@ -2093,26 +2347,32 @@ export default function JuspayDashboard() {
                                   size="sm"
                                 >
                                   <span>
-                                    {teamEmails.length > 0 
+                                    {teamEmails.length > 0
                                       ? `${teamEmails.length} email(s) selected`
-                                      : "Select team emails..."
-                                    }
+                                      : "Select team emails..."}
                                   </span>
                                   <Search className="ml-2 h-3 w-3" />
                                 </Button>
                               </PopoverTrigger>
-                              <PopoverContent className="w-72 p-3" align="start">
+                              <PopoverContent
+                                className="w-72 p-3"
+                                align="start"
+                              >
                                 <div className="space-y-3">
-                                  <div className="text-sm font-medium">Select Team Members</div>
-                                  
+                                  <div className="text-sm font-medium">
+                                    Select Team Members
+                                  </div>
+
                                   {/* Search Input */}
                                   <div className="relative">
                                     <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                                     <Input
                                       placeholder="Search emails..."
                                       value={newEmailInput}
-                                      onChange={(e) => setNewEmailInput(e.target.value)}
-                                      className="text-xs pl-7"
+                                      onChange={(e) =>
+                                        setNewEmailInput(e.target.value)
+                                      }
+                                      className="pl-7 text-xs"
                                     />
                                   </div>
 
@@ -2122,52 +2382,77 @@ export default function JuspayDashboard() {
                                       {(() => {
                                         // Get unique user emails from current date range
                                         const uniqueEmails = new Set<string>();
-                                        allSessionsData.sessions.forEach(session => {
-                                          if (session.userIds && session.userIds.length > 0) {
-                                            const userId = session.userIds[0];
-                                            if (userId && 
-                                                userId !== "Unknown User" && 
-                                                (userId.includes("@") || userId.includes("."))) {
-                                              uniqueEmails.add(userId);
+                                        allSessionsData.sessions.forEach(
+                                          (session) => {
+                                            if (
+                                              session.userIds &&
+                                              session.userIds.length > 0
+                                            ) {
+                                              const userId = session.userIds[0];
+                                              if (
+                                                userId &&
+                                                userId !== "Unknown User" &&
+                                                (userId.includes("@") ||
+                                                  userId.includes("."))
+                                              ) {
+                                                uniqueEmails.add(userId);
+                                              }
                                             }
-                                          }
-                                        });
+                                          },
+                                        );
 
                                         // Filter emails based on search
-                                        const filteredEmails = Array.from(uniqueEmails)
-                                          .filter(email => 
-                                            newEmailInput === "" || 
-                                            email.toLowerCase().includes(newEmailInput.toLowerCase())
+                                        const filteredEmails = Array.from(
+                                          uniqueEmails,
+                                        )
+                                          .filter(
+                                            (email) =>
+                                              newEmailInput === "" ||
+                                              email
+                                                .toLowerCase()
+                                                .includes(
+                                                  newEmailInput.toLowerCase(),
+                                                ),
                                           )
                                           .sort();
 
                                         return filteredEmails.map((email) => (
-                                          <label 
-                                            key={email} 
+                                          <label
+                                            key={email}
                                             className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-accent"
                                           >
                                             <input
                                               type="checkbox"
-                                              checked={teamEmails.includes(email)}
+                                              checked={teamEmails.includes(
+                                                email,
+                                              )}
                                               onChange={(e) => {
                                                 if (e.target.checked) {
-                                                  setTeamEmails(prev => [...prev, email]);
+                                                  setTeamEmails((prev) => [
+                                                    ...prev,
+                                                    email,
+                                                  ]);
                                                 } else {
-                                                  setTeamEmails(prev => prev.filter(e => e !== email));
+                                                  setTeamEmails((prev) =>
+                                                    prev.filter(
+                                                      (e) => e !== email,
+                                                    ),
+                                                  );
                                                 }
                                               }}
                                               className="rounded"
                                             />
-                                            <span className="text-xs truncate flex-1">{email}</span>
+                                            <span className="flex-1 truncate text-xs">
+                                              {email}
+                                            </span>
                                           </label>
                                         ));
                                       })()}
                                     </div>
                                   </ScrollArea>
 
-
                                   {/* Quick Actions */}
-                                  <div className="border-t pt-2 space-y-1">
+                                  <div className="space-y-1 border-t pt-2">
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -2175,16 +2460,24 @@ export default function JuspayDashboard() {
                                       onClick={() => {
                                         // Select all emails from current date range
                                         const uniqueEmails = new Set<string>();
-                                        allSessionsData.sessions.forEach(session => {
-                                          if (session.userIds && session.userIds.length > 0) {
-                                            const userId = session.userIds[0];
-                                            if (userId && 
-                                                userId !== "Unknown User" && 
-                                                (userId.includes("@") || userId.includes("."))) {
-                                              uniqueEmails.add(userId);
+                                        allSessionsData.sessions.forEach(
+                                          (session) => {
+                                            if (
+                                              session.userIds &&
+                                              session.userIds.length > 0
+                                            ) {
+                                              const userId = session.userIds[0];
+                                              if (
+                                                userId &&
+                                                userId !== "Unknown User" &&
+                                                (userId.includes("@") ||
+                                                  userId.includes("."))
+                                              ) {
+                                                uniqueEmails.add(userId);
+                                              }
                                             }
-                                          }
-                                        });
+                                          },
+                                        );
                                         setTeamEmails(Array.from(uniqueEmails));
                                       }}
                                     >
@@ -2210,9 +2503,11 @@ export default function JuspayDashboard() {
                                   <Badge
                                     key={index}
                                     variant="secondary"
-                                    className="text-xs cursor-pointer"
+                                    className="cursor-pointer text-xs"
                                     onClick={() => {
-                                      setTeamEmails(prev => prev.filter((_, i) => i !== index));
+                                      setTeamEmails((prev) =>
+                                        prev.filter((_, i) => i !== index),
+                                      );
                                     }}
                                   >
                                     {email} ×
@@ -2225,7 +2520,7 @@ export default function JuspayDashboard() {
 
                         {/* Apply Filters Button - For Team Email Settings */}
                         <div className="border-t pt-4">
-                          <Button 
+                          <Button
                             className="w-full"
                             onClick={() => setShowAdvancedFilters(false)}
                           >
@@ -2238,25 +2533,26 @@ export default function JuspayDashboard() {
                           <label className="text-sm font-medium">
                             Manual Ratings
                           </label>
-                          <Card className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border-orange-200 dark:from-orange-950/20 dark:to-red-950/20 dark:border-orange-800">
+                          <Card className="border-orange-200 bg-gradient-to-r from-orange-50 to-red-50 p-4 dark:border-orange-800 dark:from-orange-950/20 dark:to-red-950/20">
                             <div className="space-y-3">
-                              <div className="flex items-center gap-2 mb-2">
+                              <div className="mb-2 flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-orange-600" />
                                 <span className="text-sm font-medium text-orange-800 dark:text-orange-300">
                                   Rate Assistant Responses
                                 </span>
                               </div>
-                              
-                              <p className="text-xs text-orange-700 dark:text-orange-400 mb-3">
-                                Click the button below to open the manual ratings interface
+
+                              <p className="mb-3 text-xs text-orange-700 dark:text-orange-400">
+                                Click the button below to open the manual
+                                ratings interface
                               </p>
-                              
+
                               <Button
                                 onClick={() => {
                                   setShowManualRatingsModal(true);
                                   setShowAdvancedFilters(false);
                                 }}
-                                className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white"
+                                className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white hover:from-orange-700 hover:to-red-700"
                                 size="sm"
                               >
                                 <Clock className="mr-2 h-4 w-4" />
@@ -2265,26 +2561,44 @@ export default function JuspayDashboard() {
 
                               {/* Show rating statistics if any ratings exist */}
                               {manualRatings.size > 0 && (
-                                <div className="mt-3 pt-3 border-t border-orange-200 dark:border-orange-800">
-                                  <div className="text-xs text-orange-700 dark:text-orange-400 mb-2">
+                                <div className="mt-3 border-t border-orange-200 pt-3 dark:border-orange-800">
+                                  <div className="mb-2 text-xs text-orange-700 dark:text-orange-400">
                                     Current Ratings:
                                   </div>
                                   <div className="grid grid-cols-3 gap-2 text-xs">
                                     <div className="text-center">
                                       <div className="font-semibold text-green-600">
-                                        {Array.from(manualRatings.values()).filter(r => r === "correct").length}
+                                        {
+                                          Array.from(
+                                            manualRatings.values(),
+                                          ).filter((r) => r === "correct")
+                                            .length
+                                        }
                                       </div>
-                                      <div className="text-green-600">Correct</div>
+                                      <div className="text-green-600">
+                                        Correct
+                                      </div>
                                     </div>
                                     <div className="text-center">
                                       <div className="font-semibold text-yellow-600">
-                                        {Array.from(manualRatings.values()).filter(r => r === "needs-work").length}
+                                        {
+                                          Array.from(
+                                            manualRatings.values(),
+                                          ).filter((r) => r === "needs-work")
+                                            .length
+                                        }
                                       </div>
-                                      <div className="text-yellow-600">Needs Work</div>
+                                      <div className="text-yellow-600">
+                                        Needs Work
+                                      </div>
                                     </div>
                                     <div className="text-center">
                                       <div className="font-semibold text-red-600">
-                                        {Array.from(manualRatings.values()).filter(r => r === "wrong").length}
+                                        {
+                                          Array.from(
+                                            manualRatings.values(),
+                                          ).filter((r) => r === "wrong").length
+                                        }
                                       </div>
                                       <div className="text-red-600">Wrong</div>
                                     </div>
@@ -2314,7 +2628,7 @@ export default function JuspayDashboard() {
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
                   {isLoadingData && (
-                    <div className="text-center text-xs text-muted-foreground p-4">
+                    <div className="p-4 text-center text-xs text-muted-foreground">
                       Loading data for new date range...
                     </div>
                   )}
@@ -2374,12 +2688,11 @@ export default function JuspayDashboard() {
           </div>
         </div>
 
-
         {/* Middle Section - Conversation Flow */}
-        <div 
+        <div
           className={cn(
-            "flex flex-1 flex-col relative",
-            isMobile && isMobileMenuOpen && "opacity-50"
+            "relative flex flex-1 flex-col",
+            isMobile && isMobileMenuOpen && "opacity-50",
           )}
         >
           {selectedSessionId ? (
@@ -2453,17 +2766,19 @@ export default function JuspayDashboard() {
             </div>
           )}
 
-
           {/* Manual Ratings Modal */}
-          <Dialog open={showManualRatingsModal} onOpenChange={setShowManualRatingsModal}>
-            <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto p-0">
+          <Dialog
+            open={showManualRatingsModal}
+            onOpenChange={setShowManualRatingsModal}
+          >
+            <DialogContent className="max-h-[80vh] max-w-6xl overflow-y-auto p-0">
               <DialogHeader className="p-6 pb-4">
                 <DialogTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
                   Manual Ratings Management
                 </DialogTitle>
               </DialogHeader>
-              
+
               <div className="px-6 pb-6">
                 <ManualRatingsContent
                   manualRatings={manualRatings}
@@ -2484,201 +2799,248 @@ export default function JuspayDashboard() {
             <DialogTrigger asChild>
               <Button
                 className={cn(
-                  "absolute bottom-6 right-6 h-16 w-16 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-40",
+                  "absolute bottom-6 right-6 z-40 h-16 w-16 rounded-full shadow-lg transition-all duration-300 hover:scale-110",
                   "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
-                  "flex flex-col items-center justify-center gap-1"
+                  "flex flex-col items-center justify-center gap-1",
                 )}
                 size="lg"
               >
                 <BarChart3 className="h-5 w-5 text-white" />
-                <span className="text-xs text-white font-medium">Metrics</span>
+                <span className="text-xs font-medium text-white">Metrics</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto p-0">
+            <DialogContent className="max-h-[80vh] max-w-5xl overflow-y-auto p-0">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
                   Total Statistics Overview
                 </DialogTitle>
               </DialogHeader>
-              
+
               <div className="p-6">
-              
-              <div className="space-y-6 w-full">
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-                  <Card className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800 min-w-0">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400 truncate">
-                        {statistics.totalSessions}
+                <div className="w-full space-y-6">
+                  {/* Summary Cards */}
+                  <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Card className="min-w-0 border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 p-3 dark:border-blue-800 dark:from-blue-950/20 dark:to-blue-900/20">
+                      <div className="text-center">
+                        <div className="truncate text-xl font-bold text-blue-600 dark:text-blue-400">
+                          {statistics.totalSessions}
+                        </div>
+                        <div className="text-xs leading-tight text-muted-foreground">
+                          Total Sessions
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground leading-tight">Total Sessions</div>
+                    </Card>
+
+                    <Card className="min-w-0 border border-green-200 bg-gradient-to-r from-green-50 to-green-100 p-3 dark:border-green-800 dark:from-green-950/20 dark:to-green-900/20">
+                      <div className="text-center">
+                        <div className="truncate text-xl font-bold text-green-600 dark:text-green-400">
+                          {statistics.totalQueries}
+                        </div>
+                        <div className="text-xs leading-tight text-muted-foreground">
+                          Total Queries
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="min-w-0 border border-purple-200 bg-gradient-to-r from-purple-50 to-purple-100 p-3 dark:border-purple-800 dark:from-purple-950/20 dark:to-purple-900/20">
+                      <div className="text-center">
+                        <div className="truncate text-xl font-bold text-purple-600 dark:text-purple-400">
+                          {statistics.correctPercentage}%
+                        </div>
+                        <div className="text-xs leading-tight text-muted-foreground">
+                          Overall Accuracy
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Detailed Statistics Table */}
+                  <Card>
+                    <div className="border-b p-4">
+                      <h3 className="text-lg font-semibold">
+                        Detailed Breakdown by User Category
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Statistics filtered by current date range and applied
+                        filters
+                      </p>
                     </div>
+
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="font-semibold">
+                            Category
+                          </TableHead>
+                          <TableHead className="text-center font-semibold">
+                            Total Sessions
+                          </TableHead>
+                          <TableHead className="text-center font-semibold">
+                            Total Queries
+                          </TableHead>
+                          <TableHead className="text-center font-semibold">
+                            Incorrect Queries
+                          </TableHead>
+                          <TableHead className="text-center font-semibold">
+                            Accuracy
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow className="hover:bg-green-50 dark:hover:bg-green-950/10">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                              Merchant
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.merchant.totalSessions}
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.merchant.totalQueries}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-semibold text-red-600 dark:text-red-400">
+                              {detailedStatistics.merchant.incorrectQueries}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={
+                                detailedStatistics.merchant.accuracy >= 80
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className={cn(
+                                "font-semibold",
+                                detailedStatistics.merchant.accuracy >= 80
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "",
+                              )}
+                            >
+                              {detailedStatistics.merchant.accuracy}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+
+                        <TableRow className="hover:bg-blue-50 dark:hover:bg-blue-950/10">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                              Team
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.team.totalSessions}
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.team.totalQueries}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-semibold text-red-600 dark:text-red-400">
+                              {detailedStatistics.team.incorrectQueries}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={
+                                detailedStatistics.team.accuracy >= 80
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className={cn(
+                                "font-semibold",
+                                detailedStatistics.team.accuracy >= 80
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "",
+                              )}
+                            >
+                              {detailedStatistics.team.accuracy}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+
+                        <TableRow className="hover:bg-purple-50 dark:hover:bg-purple-950/10">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full bg-purple-500"></div>
+                              Other
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.other.totalSessions}
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {detailedStatistics.other.totalQueries}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-semibold text-red-600 dark:text-red-400">
+                              {detailedStatistics.other.incorrectQueries}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={
+                                detailedStatistics.other.accuracy >= 80
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className={cn(
+                                "font-semibold",
+                                detailedStatistics.other.accuracy >= 80
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "",
+                              )}
+                            >
+                              {detailedStatistics.other.accuracy}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
                   </Card>
-                  
-                  <Card className="p-3 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-900/20 border border-green-200 dark:border-green-800 min-w-0">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600 dark:text-green-400 truncate">
-                        {statistics.totalQueries}
-                      </div>
-                      <div className="text-xs text-muted-foreground leading-tight">Total Queries</div>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800 min-w-0">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-purple-600 dark:text-purple-400 truncate">
-                        {statistics.correctPercentage}%
-                      </div>
-                      <div className="text-xs text-muted-foreground leading-tight">Overall Accuracy</div>
+
+                  {/* Additional Insights */}
+                  <Card className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 dark:from-gray-950/20 dark:to-gray-900/20">
+                    <h4 className="mb-2 font-semibold">
+                      Current Filters Applied:
+                    </h4>
+                    <div className="flex flex-wrap gap-2 text-sm">
+                      <Badge variant="outline">
+                        Date: {dateRange.from.toLocaleDateString()} -{" "}
+                        {dateRange.to.toLocaleDateString()}
+                      </Badge>
+                      {selectedTag !== "all" && (
+                        <Badge variant="outline">Agent: {selectedTag}</Badge>
+                      )}
+                      {showOnlyMerchant && (
+                        <Badge variant="outline">Merchant Only</Badge>
+                      )}
+                      {showOnlyTeam && (
+                        <Badge variant="outline">Team Only</Badge>
+                      )}
+                      {showOnlyJuspayOthers && (
+                        <Badge variant="outline">Other Only</Badge>
+                      )}
+                      {filterCorrect && (
+                        <Badge variant="outline">Correct Only</Badge>
+                      )}
+                      {filterIncorrect && (
+                        <Badge variant="outline">Incorrect Only</Badge>
+                      )}
+                      {hideUnknownUser && (
+                        <Badge variant="outline">Hide Unknown</Badge>
+                      )}
+                      {teamEmails.length > 0 && (
+                        <Badge variant="outline">
+                          Team Emails: {teamEmails.length}
+                        </Badge>
+                      )}
                     </div>
                   </Card>
                 </div>
-
-                {/* Detailed Statistics Table */}
-                <Card>
-                  <div className="p-4 border-b">
-                    <h3 className="text-lg font-semibold">Detailed Breakdown by User Category</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Statistics filtered by current date range and applied filters
-                    </p>
-                  </div>
-                  
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="font-semibold">Category</TableHead>
-                        <TableHead className="text-center font-semibold">Total Sessions</TableHead>
-                        <TableHead className="text-center font-semibold">Total Queries</TableHead>
-                        <TableHead className="text-center font-semibold">Incorrect Queries</TableHead>
-                        <TableHead className="text-center font-semibold">Accuracy</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow className="hover:bg-green-50 dark:hover:bg-green-950/10">
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                            Merchant
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.merchant.totalSessions}
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.merchant.totalQueries}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-red-600 dark:text-red-400">
-                            {detailedStatistics.merchant.incorrectQueries}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge 
-                            variant={detailedStatistics.merchant.accuracy >= 80 ? "default" : "destructive"}
-                            className={cn(
-                              "font-semibold",
-                              detailedStatistics.merchant.accuracy >= 80 
-                                ? "bg-green-600 hover:bg-green-700" 
-                                : ""
-                            )}
-                          >
-                            {detailedStatistics.merchant.accuracy}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                      
-                      <TableRow className="hover:bg-blue-50 dark:hover:bg-blue-950/10">
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                            Team
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.team.totalSessions}
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.team.totalQueries}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-red-600 dark:text-red-400">
-                            {detailedStatistics.team.incorrectQueries}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge 
-                            variant={detailedStatistics.team.accuracy >= 80 ? "default" : "destructive"}
-                            className={cn(
-                              "font-semibold",
-                              detailedStatistics.team.accuracy >= 80 
-                                ? "bg-green-600 hover:bg-green-700" 
-                                : ""
-                            )}
-                          >
-                            {detailedStatistics.team.accuracy}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                      
-                      <TableRow className="hover:bg-purple-50 dark:hover:bg-purple-950/10">
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full bg-purple-500"></div>
-                            Other
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.other.totalSessions}
-                        </TableCell>
-                        <TableCell className="text-center font-semibold">
-                          {detailedStatistics.other.totalQueries}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-red-600 dark:text-red-400">
-                            {detailedStatistics.other.incorrectQueries}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge 
-                            variant={detailedStatistics.other.accuracy >= 80 ? "default" : "destructive"}
-                            className={cn(
-                              "font-semibold",
-                              detailedStatistics.other.accuracy >= 80 
-                                ? "bg-green-600 hover:bg-green-700" 
-                                : ""
-                            )}
-                          >
-                            {detailedStatistics.other.accuracy}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </Card>
-
-                {/* Additional Insights */}
-                <Card className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-950/20 dark:to-gray-900/20">
-                  <h4 className="font-semibold mb-2">Current Filters Applied:</h4>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <Badge variant="outline">
-                      Date: {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
-                    </Badge>
-                    {selectedTag !== "all" && (
-                      <Badge variant="outline">Agent: {selectedTag}</Badge>
-                    )}
-                    {showOnlyMerchant && <Badge variant="outline">Merchant Only</Badge>}
-                    {showOnlyTeam && <Badge variant="outline">Team Only</Badge>}
-                    {showOnlyJuspayOthers && <Badge variant="outline">Other Only</Badge>}
-                    {filterCorrect && <Badge variant="outline">Correct Only</Badge>}
-                    {filterIncorrect && <Badge variant="outline">Incorrect Only</Badge>}
-                    {hideUnknownUser && <Badge variant="outline">Hide Unknown</Badge>}
-                    {teamEmails.length > 0 && (
-                      <Badge variant="outline">Team Emails: {teamEmails.length}</Badge>
-                    )}
-                  </div>
-                </Card>
-              </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -2687,7 +3049,7 @@ export default function JuspayDashboard() {
         {/* Right Resizer Handle */}
         {isDesktop && !isMobile && (
           <div
-            className="w-1 bg-border hover:bg-primary cursor-col-resize transition-colors"
+            className="w-1 cursor-col-resize bg-border transition-colors hover:bg-primary"
             onMouseDown={handleMouseDown}
           >
             <div className="flex h-full items-center justify-center">
@@ -2698,7 +3060,7 @@ export default function JuspayDashboard() {
 
         {/* Mobile Right Panel Overlay */}
         {isMobile && isMobileRightPanelOpen && (
-          <div 
+          <div
             className="absolute inset-0 z-50 bg-black/50"
             onClick={() => setIsMobileRightPanelOpen(false)}
           />
@@ -2706,112 +3068,115 @@ export default function JuspayDashboard() {
 
         {/* Right Sidebar - Tool Call Details */}
         {(!isMobile || isMobileRightPanelOpen) && (
-          <div 
+          <div
             className={cn(
               "border-l bg-background",
-              isMobile 
+              isMobile
                 ? cn(
                     "absolute inset-y-0 right-0 z-50 w-80 transform transition-transform duration-300",
-                    isMobileRightPanelOpen ? "translate-x-0" : "translate-x-full"
+                    isMobileRightPanelOpen
+                      ? "translate-x-0"
+                      : "translate-x-full",
                   )
-                : isTablet 
-                  ? "w-80" 
-                  : "w-[450px]"
+                : isTablet
+                  ? "w-80"
+                  : "w-[450px]",
             )}
             style={isDesktop ? { width: `${rightPanelWidth}px` } : undefined}
           >
-          <div className="flex h-full flex-col">
-            <div className="border-b p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">
-                  {selectedToolCall ? "Tool Call Details" : "Response Details"}
-                </h3>
-                {isMobile && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsMobileRightPanelOpen(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <ScrollArea className="flex-1 p-4">
-              {selectedToolCall ? (
-                <div className="space-y-4 pb-6">
-                  {/* Show all tool calls/observations */}
-                  {traceDetails.isLoading ? (
-                    <div className="text-sm text-muted-foreground">
-                      Loading tool calls...
-                    </div>
-                  ) : (
-                    <>
-                      {observations && observations.length > 0 ? (
-                        observations.map((obs: any, index: number) => (
-                          <Collapsible key={obs.id} defaultOpen={index === 0}>
-                            <Card className="mb-4 overflow-hidden">
-                              <CollapsibleTrigger className="w-full p-3 transition-all duration-200 hover:bg-accent">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs text-white transition-transform duration-200 group-data-[state=open]:rotate-90">
-                                      {index + 1}
-                                    </div>
-                                    <span className="text-sm font-medium">
-                                      Tool call {index + 1}
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      {obs.name || obs.type}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2">
-                                <div className="space-y-3 border-t p-3">
-                                  <ObservationDetails
-                                    observationId={obs.id}
-                                    traceId={
-                                      selectedTraceForDetails?.traceId ?? ""
-                                    }
-                                    projectId={projectId}
-                                    startTime={obs.startTime}
-                                    name={obs.name || obs.type}
-                                  />
-                                </div>
-                              </CollapsibleContent>
-                            </Card>
-                          </Collapsible>
-                        ))
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          No tool calls found for this trace
-                        </div>
-                      )}
-
-                      {/* Final Response Section - Green Highlighted */}
-                      {traceDetails.data && (
-                        <FinalResponseSection
-                          trace={traceDetails.data}
-                          projectId={projectId}
-                        />
-                      )}
-                    </>
+            <div className="flex h-full flex-col">
+              <div className="border-b p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">
+                    {selectedToolCall
+                      ? "Tool Call Details"
+                      : "Response Details"}
+                  </h3>
+                  {isMobile && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsMobileRightPanelOpen(false)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   )}
                 </div>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  Click on a message to view details
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-        </div>
-        )}
+              </div>
 
+              <ScrollArea className="flex-1 p-4">
+                {selectedToolCall ? (
+                  <div className="space-y-4 pb-6">
+                    {/* Show all tool calls/observations */}
+                    {traceDetails.isLoading ? (
+                      <div className="text-sm text-muted-foreground">
+                        Loading tool calls...
+                      </div>
+                    ) : (
+                      <>
+                        {observations && observations.length > 0 ? (
+                          observations.map((obs: any, index: number) => (
+                            <Collapsible key={obs.id} defaultOpen={index === 0}>
+                              <Card className="mb-4 overflow-hidden">
+                                <CollapsibleTrigger className="w-full p-3 transition-all duration-200 hover:bg-accent">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs text-white transition-transform duration-200 group-data-[state=open]:rotate-90">
+                                        {index + 1}
+                                      </div>
+                                      <span className="text-sm font-medium">
+                                        Tool call {index + 1}
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs"
+                                      >
+                                        {obs.name || obs.type}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2">
+                                  <div className="space-y-3 border-t p-3">
+                                    <ObservationDetails
+                                      observationId={obs.id}
+                                      traceId={
+                                        selectedTraceForDetails?.traceId ?? ""
+                                      }
+                                      projectId={projectId}
+                                      startTime={obs.startTime}
+                                      name={obs.name || obs.type}
+                                    />
+                                  </div>
+                                </CollapsibleContent>
+                              </Card>
+                            </Collapsible>
+                          ))
+                        ) : (
+                          <div className="text-sm text-muted-foreground">
+                            No tool calls found for this trace
+                          </div>
+                        )}
+
+                        {/* Final Response Section - Green Highlighted */}
+                        {traceDetails.data && (
+                          <FinalResponseSection
+                            trace={traceDetails.data}
+                            projectId={projectId}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    Click on a message to view details
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          </div>
+        )}
       </div>
     </Page>
   );
@@ -2835,35 +3200,46 @@ function ManualRatingsContent({
 
   // Get all rated traces with their details
   const ratedTraces = React.useMemo(() => {
-    const traces = Array.from(manualRatings.entries()).map(([traceId, rating]) => {
-      const trace = allTraces.find(t => t.id === traceId);
-      if (!trace) return null;
+    const traces = Array.from(manualRatings.entries())
+      .map(([traceId, rating]) => {
+        const trace = allTraces.find((t) => t.id === traceId);
+        if (!trace) return null;
 
-      const session = allSessions.find(s => s.id === trace.sessionId);
-      return {
-        traceId,
-        rating,
-        trace,
-        session,
-        timestamp: trace.timestamp,
-      };
-    }).filter((item): item is NonNullable<typeof item> => item !== null);
+        const session = allSessions.find((s) => s.id === trace.sessionId);
+        return {
+          traceId,
+          rating,
+          trace,
+          session,
+          timestamp: trace.timestamp,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
 
     // Filter by rating type
     if (filterRating !== "all") {
-      return traces.filter(item => item.rating === filterRating);
+      return traces.filter((item) => item.rating === filterRating);
     }
 
     // Sort by timestamp (newest first)
-    return traces.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return traces.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
   }, [manualRatings, allTraces, allSessions, filterRating]);
 
   // Statistics
   const stats = React.useMemo(() => {
     const total = manualRatings.size;
-    const correct = Array.from(manualRatings.values()).filter(r => r === "correct").length;
-    const needsWork = Array.from(manualRatings.values()).filter(r => r === "needs-work").length;
-    const wrong = Array.from(manualRatings.values()).filter(r => r === "wrong").length;
+    const correct = Array.from(manualRatings.values()).filter(
+      (r) => r === "correct",
+    ).length;
+    const needsWork = Array.from(manualRatings.values()).filter(
+      (r) => r === "needs-work",
+    ).length;
+    const wrong = Array.from(manualRatings.values()).filter(
+      (r) => r === "wrong",
+    ).length;
 
     return { total, correct, needsWork, wrong };
   }, [manualRatings]);
@@ -2896,11 +3272,15 @@ function ManualRatingsContent({
 
   if (manualRatings.size === 0) {
     return (
-      <div className="text-center py-8">
-        <Clock className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">No Manual Ratings Yet</h3>
+      <div className="py-8 text-center">
+        <Clock className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+        <h3 className="mb-2 text-lg font-medium text-gray-900">
+          No Manual Ratings Yet
+        </h3>
         <p className="text-gray-500">
-          Start rating responses by clicking the "Correct", "Needs Work", or "Wrong" buttons on any assistant response.
+          Start rating responses by clicking the &quot;Correct&quot;,
+          &quot;Needs Work&quot;, or &quot;Wrong&quot; buttons on any assistant
+          response.
         </p>
       </div>
     );
@@ -2909,17 +3289,21 @@ function ManualRatingsContent({
   return (
     <div className="space-y-6">
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
           <div className="text-sm text-muted-foreground">Total Rated</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">{stats.correct}</div>
+          <div className="text-2xl font-bold text-green-600">
+            {stats.correct}
+          </div>
           <div className="text-sm text-muted-foreground">Correct</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-yellow-600">{stats.needsWork}</div>
+          <div className="text-2xl font-bold text-yellow-600">
+            {stats.needsWork}
+          </div>
           <div className="text-sm text-muted-foreground">Needs Work</div>
         </Card>
         <Card className="p-4 text-center">
@@ -2938,7 +3322,9 @@ function ManualRatingsContent({
           <SelectContent>
             <SelectItem value="all">All Ratings ({stats.total})</SelectItem>
             <SelectItem value="correct">Correct ({stats.correct})</SelectItem>
-            <SelectItem value="needs-work">Needs Work ({stats.needsWork})</SelectItem>
+            <SelectItem value="needs-work">
+              Needs Work ({stats.needsWork})
+            </SelectItem>
             <SelectItem value="wrong">Wrong ({stats.wrong})</SelectItem>
           </SelectContent>
         </Select>
@@ -2946,8 +3332,12 @@ function ManualRatingsContent({
           variant="outline"
           size="sm"
           onClick={() => {
-            if (confirm("Are you sure you want to clear all manual ratings? This action cannot be undone.")) {
-              Array.from(manualRatings.keys()).forEach(traceId => {
+            if (
+              confirm(
+                "Are you sure you want to clear all manual ratings? This action cannot be undone.",
+              )
+            ) {
+              Array.from(manualRatings.keys()).forEach((traceId) => {
                 onUpdateRating(traceId, null);
               });
               toast.success("All manual ratings cleared");
@@ -2974,13 +3364,17 @@ function ManualRatingsContent({
             {ratedTraces.map((item) => (
               <TableRow key={item.traceId} className="hover:bg-muted/50">
                 <TableCell>
-                  <div className={cn(
-                    "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium",
-                    getRatingColor(item.rating)
-                  )}>
+                  <div
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium",
+                      getRatingColor(item.rating),
+                    )}
+                  >
                     {getRatingIcon(item.rating)}
-                    {item.rating === "needs-work" ? "Needs Work" : 
-                     item.rating.charAt(0).toUpperCase() + item.rating.slice(1)}
+                    {item.rating === "needs-work"
+                      ? "Needs Work"
+                      : item.rating.charAt(0).toUpperCase() +
+                        item.rating.slice(1)}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -3031,9 +3425,11 @@ function ManualRatingsContent({
       </Card>
 
       {ratedTraces.length === 0 && filterRating !== "all" && (
-        <div className="text-center py-8">
+        <div className="py-8 text-center">
           <p className="text-gray-500">
-            No ratings found for "{filterRating === "needs-work" ? "Needs Work" : filterRating}" filter.
+            No ratings found for &quot;
+            {filterRating === "needs-work" ? "Needs Work" : filterRating}&quot;
+            filter.
           </p>
         </div>
       )}
@@ -3505,11 +3901,14 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "correct" &&
-                      "bg-green-600 text-white hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 border-green-600 dark:border-green-500",
+                      "border-green-600 bg-green-600 text-white hover:bg-green-700 dark:border-green-500 dark:bg-green-500 dark:hover:bg-green-600",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onManualRatingChange(trace.id, selectedRating === "correct" ? null : "correct");
+                    onManualRatingChange(
+                      trace.id,
+                      selectedRating === "correct" ? null : "correct",
+                    );
                     toast.success("Response marked as correct");
                   }}
                 >
@@ -3524,11 +3923,14 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "needs-work" &&
-                      "bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-600 border-orange-600 dark:border-orange-500",
+                      "border-orange-600 bg-orange-600 text-white hover:bg-orange-700 dark:border-orange-500 dark:bg-orange-600 dark:hover:bg-orange-600",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onManualRatingChange(trace.id, selectedRating === "needs-work" ? null : "needs-work");
+                    onManualRatingChange(
+                      trace.id,
+                      selectedRating === "needs-work" ? null : "needs-work",
+                    );
                     toast.success("Response marked as needs improvement");
                   }}
                 >
@@ -3541,11 +3943,14 @@ function TraceMessage({
                   className={cn(
                     "h-7 text-xs",
                     selectedRating === "wrong" &&
-                      "bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 border-red-600 dark:border-red-500",
+                      "border-red-600 bg-red-600 text-white hover:bg-red-700 dark:border-red-500 dark:bg-red-500 dark:hover:bg-red-600",
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onManualRatingChange(trace.id, selectedRating === "wrong" ? null : "wrong");
+                    onManualRatingChange(
+                      trace.id,
+                      selectedRating === "wrong" ? null : "wrong",
+                    );
                     toast.success("Response marked as wrong");
                   }}
                 >
@@ -3563,65 +3968,65 @@ function TraceMessage({
                       toast.info("Rating cleared");
                     }}
                   >
-                  Clear
-                </Button>
-              )}
-            </div>
+                    Clear
+                  </Button>
+                )}
+              </div>
 
-            {/* LLM Eval Section - Shows when genius-feedback score is available */}
-            {geniusFeedbackScore && (
-              <div className="mt-4 border-t pt-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
-                    <span className="text-xs text-white">⚡</span>
-                  </div>
-                  <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                    LLM Eval
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {/* Judge Response */}
-                  <div>
-                    <div className="mb-1 text-xs font-medium text-muted-foreground">
-                      Judge Response:
+              {/* LLM Eval Section - Shows when genius-feedback score is available */}
+              {geniusFeedbackScore && (
+                <div className="mt-4 border-t pt-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                      <span className="text-xs text-white">⚡</span>
                     </div>
-                    <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
-                      <span
-                        className={cn(
-                          "text-sm font-semibold",
-                          geniusFeedbackScore.value === 1
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-red-600 dark:text-red-400",
-                        )}
-                      >
-                        {geniusFeedbackScore.value === 1
-                          ? "CORRECT"
-                          : "INCORRECT"}
-                      </span>
-                    </div>
+                    <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                      LLM Eval
+                    </span>
                   </div>
 
-                  {/* Judgement Reason */}
-                  {geniusFeedbackScore.comment && (
+                  <div className="space-y-2">
+                    {/* Judge Response */}
                     <div>
                       <div className="mb-1 text-xs font-medium text-muted-foreground">
-                        Judgement Reason:
+                        Judge Response:
                       </div>
-                      <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
-                        <div className="text-sm leading-relaxed">
-                          {geniusFeedbackScore.comment}
-                        </div>
+                      <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
+                        <span
+                          className={cn(
+                            "text-sm font-semibold",
+                            geniusFeedbackScore.value === 1
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-red-600 dark:text-red-400",
+                          )}
+                        >
+                          {geniusFeedbackScore.value === 1
+                            ? "CORRECT"
+                            : "INCORRECT"}
+                        </span>
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            <div className="mt-2 text-xs text-muted-foreground">
-              Click to view tool calls →
-            </div>
+                    {/* Judgement Reason */}
+                    {geniusFeedbackScore.comment && (
+                      <div>
+                        <div className="mb-1 text-xs font-medium text-muted-foreground">
+                          Judgement Reason:
+                        </div>
+                        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+                          <div className="text-sm leading-relaxed">
+                            {geniusFeedbackScore.comment}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-2 text-xs text-muted-foreground">
+                Click to view tool calls →
+              </div>
             </div>
           </div>
         </Card>
