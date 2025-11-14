@@ -1041,6 +1041,71 @@ describe("OTel Resource Span Mapping", () => {
         }),
       });
     });
+
+    it("should convert a Vercel AI SDK embedding span to Langfuse embedding-create event", async () => {
+      const resourceSpan = {
+        scopeSpans: [
+          {
+            scope: { name: "ai" },
+            spans: [
+              {
+                traceId: {
+                  type: "Buffer",
+                  data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                },
+                spanId: {
+                  type: "Buffer",
+                  data: [1, 2, 3, 4, 5, 6, 7, 8],
+                },
+                name: "generate-document-embedding",
+                kind: 3,
+                startTimeUnixNano: {
+                  low: 153687506,
+                  high: 404677085,
+                  unsigned: true,
+                },
+                endTimeUnixNano: {
+                  low: 1327836088,
+                  high: 404677085,
+                  unsigned: true,
+                },
+                attributes: [
+                  {
+                    key: "operation.name",
+                    value: {
+                      stringValue: "ai.embed generate-document-embedding",
+                    },
+                  },
+                  {
+                    key: "ai.model.id",
+                    value: { stringValue: "gemini-embedding-001" },
+                  },
+                ],
+                status: {},
+              },
+            ],
+          },
+        ],
+      };
+
+      // When
+      const langfuseEvents = await convertOtelSpanToIngestionEvent(
+        resourceSpan,
+        new Set(),
+      );
+
+      // Then
+      const schema = createIngestionEventSchema();
+      const parsedEvents = langfuseEvents.map((event) => schema.parse(event));
+      expect(parsedEvents).toHaveLength(2); // trace + embedding
+
+      // Should create embedding-create event, not span-create
+      const embeddingEvent = parsedEvents.find(
+        (event) => event.type === "embedding-create",
+      );
+      expect(embeddingEvent).toBeDefined();
+      expect(embeddingEvent?.body.model).toBe("gemini-embedding-001");
+    });
   });
 
   describe("Property Mapping", () => {
@@ -4195,6 +4260,202 @@ describe("OTel Resource Span Mapping", () => {
       // Should still create a trace
       const traceEvents = events.filter((e) => e.type === "trace-create");
       expect(traceEvents.length).toBe(1);
+    });
+
+    it("should map Vercel AI SDK toolCall to tool-create", async () => {
+      const otelSpans = [
+        {
+          resource: { attributes: [] },
+          scopeSpans: [
+            {
+              scope: { name: "ai" },
+              spans: [
+                {
+                  traceId: {
+                    data: [
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    ],
+                  },
+                  spanId: { data: [1, 2, 3, 4, 5, 6, 7, 8] },
+                  name: "ai.toolCall",
+                  startTimeUnixNano: 1000000000,
+                  endTimeUnixNano: 2000000000,
+                  attributes: [
+                    {
+                      key: "operation.name",
+                      value: {
+                        stringValue: "ai.toolCall MyAgent.MyLLM.myFunction",
+                      },
+                    },
+                    {
+                      key: "resource.name",
+                      value: { stringValue: "MyAgent.MyLLM.myFunction" },
+                    },
+                    {
+                      key: "ai.operationId",
+                      value: { stringValue: "ai.toolCall" },
+                    },
+                    {
+                      key: "ai.toolCall.name",
+                      value: { stringValue: "myTool" },
+                    },
+                    {
+                      key: "ai.toolCall.id",
+                      value: { stringValue: "call_abc123" },
+                    },
+                  ],
+                  status: {},
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const events = await convertOtelSpanToIngestionEvent(
+        otelSpans[0],
+        new Set(),
+        publicKey,
+      );
+
+      const toolEvents = events.filter((e) => e.type === "tool-create");
+      expect(toolEvents.length).toBe(1);
+    });
+
+    it("should map Vercel AI SDK toolCall using ai.operationId alone (without operation.name)", async () => {
+      const otelSpans = [
+        {
+          resource: { attributes: [] },
+          scopeSpans: [
+            {
+              scope: { name: "ai" },
+              spans: [
+                {
+                  traceId: {
+                    data: [
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    ],
+                  },
+                  spanId: { data: [1, 2, 3, 4, 5, 6, 7, 8] },
+                  name: "tool-execution",
+                  startTimeUnixNano: 1000000000,
+                  endTimeUnixNano: 2000000000,
+                  attributes: [
+                    {
+                      key: "ai.operationId",
+                      value: { stringValue: "ai.toolCall" },
+                    },
+                  ],
+                  status: {},
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const events = await convertOtelSpanToIngestionEvent(
+        otelSpans[0],
+        new Set(),
+        publicKey,
+      );
+
+      const toolEvents = events.filter((e) => e.type === "tool-create");
+      expect(toolEvents.length).toBe(1);
+    });
+
+    it("should map Vercel AI SDK generation WITH model to generation-create", async () => {
+      const otelSpans = [
+        {
+          resource: { attributes: [] },
+          scopeSpans: [
+            {
+              scope: { name: "ai" },
+              spans: [
+                {
+                  traceId: {
+                    data: [
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    ],
+                  },
+                  spanId: { data: [1, 2, 3, 4, 5, 6, 7, 8] },
+                  name: "text-generation",
+                  startTimeUnixNano: 1000000000,
+                  endTimeUnixNano: 2000000000,
+                  attributes: [
+                    {
+                      key: "operation.name",
+                      value: { stringValue: "ai.generateText" },
+                    },
+                    {
+                      key: "gen_ai.response.model",
+                      value: { stringValue: "gpt-4" },
+                    },
+                  ],
+                  status: {},
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const events = await convertOtelSpanToIngestionEvent(
+        otelSpans[0],
+        new Set(),
+        publicKey,
+      );
+
+      const generationEvents = events.filter(
+        (e) => e.type === "generation-create",
+      );
+      expect(generationEvents.length).toBe(1);
+    });
+
+    it("should fallback to span-create for AI SDK generation WITHOUT model", async () => {
+      const otelSpans = [
+        {
+          resource: { attributes: [] },
+          scopeSpans: [
+            {
+              scope: { name: "ai" },
+              spans: [
+                {
+                  traceId: {
+                    data: [
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    ],
+                  },
+                  spanId: { data: [1, 2, 3, 4, 5, 6, 7, 8] },
+                  name: "text-generation",
+                  startTimeUnixNano: 1000000000,
+                  endTimeUnixNano: 2000000000,
+                  attributes: [
+                    {
+                      key: "operation.name",
+                      value: { stringValue: "ai.generateText" },
+                    },
+                  ],
+                  status: {},
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const events = await convertOtelSpanToIngestionEvent(
+        otelSpans[0],
+        new Set(),
+        publicKey,
+      );
+
+      const spanEvents = events.filter((e) => e.type === "span-create");
+      const generationEvents = events.filter(
+        (e) => e.type === "generation-create",
+      );
+      expect(spanEvents.length).toBe(1);
+      expect(generationEvents.length).toBe(0);
     });
 
     it("should override the observation type if it is declared as 'span' but holds generation-like attributes for python-sdk <= 3.3.0", async () => {
