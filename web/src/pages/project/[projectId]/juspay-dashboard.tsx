@@ -3457,7 +3457,7 @@ function ObservationDetails({
       traceId,
       projectId,
       startTime,
-      truncated: false,
+      verbosity: "full",
     },
     {
       enabled: !!observationId && !!projectId,
@@ -3577,7 +3577,7 @@ function FinalResponseSection({
       traceId: trace.id,
       projectId,
       timestamp: trace.timestamp,
-      truncated: false,
+      verbosity: "full",
     },
     {
       enabled: !!trace.id && !!projectId,
@@ -3698,7 +3698,7 @@ function TraceMessage({
       traceId: trace.id,
       projectId,
       timestamp: trace.timestamp,
-      truncated: false, // Get full output, not truncated
+      verbosity: "full", // Get full output, not truncated
     },
     {
       enabled: !!trace.id && !!projectId,
