@@ -401,21 +401,29 @@ export default function JuspayDashboard() {
   );
 
   // Fetch manual ratings from database
-  const manualRatingsQuery = api.scores.getManualRatings.useQuery(
-    {
-      projectId,
-      traceIds: allSessionsTracesData.traces.map((t) => t.id),
-    },
-    {
-      enabled: !!projectId && allSessionsTracesData.traces.length > 0,
-    },
-  );
+  const manualRatingsQuery = api.scores.getManualRatings.useMutation();
+
+  // Fetch ratings when traces are available
+  React.useEffect(() => {
+    if (projectId && allSessionsTracesData.traces.length > 0) {
+      manualRatingsQuery.mutate({
+        projectId,
+        traceIds: allSessionsTracesData.traces.map((t) => t.id),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, allSessionsTracesData.traces.length]);
 
   // Create manual ratings mutation
   const createManualRatingMutation = api.scores.createManualRating.useMutation({
     onSuccess: () => {
-      // Refetch manual ratings after successful creation
-      manualRatingsQuery.refetch();
+      // Re-fetch manual ratings after successful creation
+      if (projectId && allSessionsTracesData.traces.length > 0) {
+        manualRatingsQuery.mutate({
+          projectId,
+          traceIds: allSessionsTracesData.traces.map((t) => t.id),
+        });
+      }
     },
     onError: (error) => {
       console.error("Failed to create manual rating:", error);
@@ -426,8 +434,13 @@ export default function JuspayDashboard() {
   // Delete manual rating mutation
   const deleteManualRatingMutation = api.scores.deleteManualRating.useMutation({
     onSuccess: () => {
-      // Refetch manual ratings after successful deletion
-      manualRatingsQuery.refetch();
+      // Re-fetch manual ratings after successful deletion
+      if (projectId && allSessionsTracesData.traces.length > 0) {
+        manualRatingsQuery.mutate({
+          projectId,
+          traceIds: allSessionsTracesData.traces.map((t) => t.id),
+        });
+      }
     },
     onError: (error) => {
       console.error("Failed to delete manual rating:", error);
