@@ -840,7 +840,6 @@ export const scoresRouter = createTRPCRouter({
         observation_id: null,
         session_id: null,
         name: "manual-rating",
-        value: undefined,
         source: ScoreSourceEnum.ANNOTATION,
         comment: input.comment || `Manual rating: ${input.rating}`,
         author_user_id: ctx.session.user.id,
@@ -882,7 +881,7 @@ export const scoresRouter = createTRPCRouter({
         traceIds: z.array(z.string()).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .mutation(async ({ input }) => {
       const filters: any[] = [
         {
           column: "name",
