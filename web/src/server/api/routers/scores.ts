@@ -361,7 +361,7 @@ export const scoresRouter = createTRPCRouter({
       const score = !!clickhouseScore
         ? {
             ...clickhouseScore,
-            value: input.value,
+            value: input.value ?? null,
             stringValue: input.stringValue ?? null,
             comment: input.comment ?? null,
             metadata: {},
@@ -376,7 +376,7 @@ export const scoresRouter = createTRPCRouter({
             ...inflatedParams,
             // only trace and session scores are supported for annotation
             datasetRunId: null,
-            value: input.value,
+            value: input.value ?? null,
             stringValue: input.stringValue ?? null,
             dataType: input.dataType ?? null,
             configId: input.configId ?? null,
@@ -547,7 +547,7 @@ export const scoresRouter = createTRPCRouter({
           sessionId: inflatedParams.sessionId,
           datasetRunId: null,
           name: input.name,
-          value: input.value,
+          value: input.value ?? null,
           dataType: input.dataType,
           configId: input.configId ?? null,
           metadata: {},
@@ -642,7 +642,7 @@ export const scoresRouter = createTRPCRouter({
 
         const baseScore = {
           ...score,
-          value: input.value,
+          value: input.value ?? null,
           comment: input.comment ?? null,
           authorUserId: ctx.session.user.id,
           queueId: input.queueId ?? null,
@@ -848,6 +848,9 @@ export const scoresRouter = createTRPCRouter({
         data_type: "CATEGORICAL",
         string_value: input.rating,
         queue_id: null,
+        created_at: convertDateToClickhouseDateTime(now),
+        updated_at: convertDateToClickhouseDateTime(now),
+        metadata: {},
       });
 
       await auditLog({
