@@ -878,46 +878,62 @@ export const scoresRouter = createTRPCRouter({
     .input(
       z.object({
         projectId: z.string(),
-        traceIds: z.array(z.string()).optional(),
+        fromDate: z.date().optional(),
+        toDate: z.date().optional(),
       }),
     )
     .mutation(async ({ input }) => {
-      const filters: any[] = [
-        {
-          column: "name",
-          type: "string",
-          operator: "=",
-          value: "manual-rating",
-        },
-      ];
+      try {
+        const filters: any[] = [
+          {
+            column: "name",
+            type: "string",
+            operator: "=",
+            value: "manual-rating",
+          },
+        ];
 
-      if (input.traceIds && input.traceIds.length > 0) {
-        filters.push({
-          column: "traceId",
-          type: "stringOptions",
-          operator: "any of",
-          value: input.traceIds,
+        // Add date range filters if provided
+        if (input.fromDate) {
+          filters.push({
+            column: "timestamp",
+            type: "datetime",
+            operator: ">=",
+            value: input.fromDate,
+          });
+        }
+        if (input.toDate) {
+          filters.push({
+            column: "timestamp",
+            type: "datetime",
+            operator: "<=",
+            value: input.toDate,
+          });
+        }
+
+        const scores = await getScoresUiTable({
+          projectId: input.projectId,
+          filter: filters,
+          orderBy: { column: "timestamp", order: "DESC" as const },
+          limit: 1000,
+          offset: 0,
+          excludeMetadata: true,
+          includeHasMetadataFlag: false,
         });
+
+        return scores.map((score) => ({
+          traceId: score.traceId!,
+          rating: score.stringValue!,
+          comment: score.comment,
+          authorUserId: score.authorUserId,
+          timestamp: score.timestamp,
+          scoreId: score.id,
+        }));
+      } catch (error) {
+        logger.error("Error fetching manual ratings:", error);
+        // Return empty array instead of throwing to prevent UI breakage
+        return [];
       }
-
-      const scores = await getScoresUiTable({
-        projectId: input.projectId,
-        filter: filters,
-        orderBy: { column: "timestamp", order: "DESC" as const },
-        limit: 1000,
-        offset: 0,
-        excludeMetadata: true,
-        includeHasMetadataFlag: false,
-      });
-
-      return scores.map((score) => ({
-        traceId: score.traceId!,
-        rating: score.stringValue!,
-        comment: score.comment,
-        authorUserId: score.authorUserId,
-        timestamp: score.timestamp,
-        scoreId: score.id,
-      }));
     }),
 
   deleteManualRating: protectedProjectProcedure

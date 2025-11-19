@@ -403,25 +403,27 @@ export default function JuspayDashboard() {
   // Fetch manual ratings from database
   const manualRatingsQuery = api.scores.getManualRatings.useMutation();
 
-  // Fetch ratings when traces are available
+  // Fetch ratings
   React.useEffect(() => {
-    if (projectId && allSessionsTracesData.traces.length > 0) {
+    if (projectId && dateRange?.from && dateRange?.to) {
       manualRatingsQuery.mutate({
         projectId,
-        traceIds: allSessionsTracesData.traces.map((t) => t.id),
+        fromDate: dateRange.from,
+        toDate: dateRange.to,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, allSessionsTracesData.traces.length]);
+  }, [projectId, dateRange?.from, dateRange?.to]);
 
   // Create manual ratings mutation
   const createManualRatingMutation = api.scores.createManualRating.useMutation({
     onSuccess: () => {
       // Re-fetch manual ratings after successful creation
-      if (projectId && allSessionsTracesData.traces.length > 0) {
+      if (projectId && dateRange?.from && dateRange?.to) {
         manualRatingsQuery.mutate({
           projectId,
-          traceIds: allSessionsTracesData.traces.map((t) => t.id),
+          fromDate: dateRange.from,
+          toDate: dateRange.to,
         });
       }
     },
@@ -435,10 +437,11 @@ export default function JuspayDashboard() {
   const deleteManualRatingMutation = api.scores.deleteManualRating.useMutation({
     onSuccess: () => {
       // Re-fetch manual ratings after successful deletion
-      if (projectId && allSessionsTracesData.traces.length > 0) {
+      if (projectId && dateRange?.from && dateRange?.to) {
         manualRatingsQuery.mutate({
           projectId,
-          traceIds: allSessionsTracesData.traces.map((t) => t.id),
+          fromDate: dateRange.from,
+          toDate: dateRange.to,
         });
       }
     },
@@ -451,13 +454,19 @@ export default function JuspayDashboard() {
   // Convert manual ratings data to Map for easier access
   const manualRatings = React.useMemo(() => {
     const ratingsMap = new Map<string, string>();
-    if (manualRatingsQuery.data) {
+    if (manualRatingsQuery.data && allTraces.length > 0) {
+      // Create a Set of trace IDs for fast lookup
+      const traceIds = new Set(allTraces.map(t => t.id));
+      
       manualRatingsQuery.data.forEach((rating) => {
-        ratingsMap.set(rating.traceId, rating.rating);
+        // Only include rating if the trace exists in current date range
+        if (traceIds.has(rating.traceId)) {
+          ratingsMap.set(rating.traceId, rating.rating);
+        }
       });
     }
     return ratingsMap;
-  }, [manualRatingsQuery.data]);
+  }, [manualRatingsQuery.data, allTraces]);
 
   // Function to update manual rating for a trace
   const updateManualRating = React.useCallback(
