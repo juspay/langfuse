@@ -915,7 +915,7 @@ export const scoresRouter = createTRPCRouter({
           projectId: input.projectId,
           filter: filters,
           orderBy: { column: "timestamp", order: "DESC" as const },
-          limit: 1000,
+          limit: 100,
           offset: 0,
           excludeMetadata: true,
           includeHasMetadataFlag: false,
