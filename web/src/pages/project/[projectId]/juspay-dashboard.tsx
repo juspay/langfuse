@@ -25,6 +25,7 @@ import {
   Menu,
   X,
   BarChart3,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/src/utils/tailwind";
 import { Skeleton } from "@/src/components/ui/skeleton";
@@ -319,11 +320,6 @@ export default function JuspayDashboard() {
   });
   const [newEmailInput, setNewEmailInput] = useState("");
 
-  // Fetch traces for all sessions within date range with pagination
-  const [allTraces, setAllTraces] = React.useState<any[]>([]);
-  const [currentPage, setCurrentPage] = React.useState(0);
-  const [hasMoreTraces, setHasMoreTraces] = React.useState(true);
-
   const allSessionsTraces = api.traces.all.useQuery(
     {
       projectId,
@@ -343,69 +339,39 @@ export default function JuspayDashboard() {
       ],
       searchQuery: null,
       searchType: [],
-      page: currentPage,
-      limit: 99,
+      page: 0,
+      limit: 7000, // Optimal limit for performance
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && hasMoreTraces,
+      enabled: !!projectId && !!dateRange?.from && !!dateRange?.to,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
     },
   );
-
-  // Accumulate traces from pagination
-  React.useEffect(() => {
-    if (allSessionsTraces.data?.traces) {
-      const newTraces = allSessionsTraces.data.traces;
-      if (currentPage === 0) {
-        setAllTraces(newTraces);
-      } else {
-        setAllTraces((prev) => [...prev, ...newTraces]);
-      }
-
-      if (newTraces.length < 99) {
-        setHasMoreTraces(false);
-      }
-    }
-  }, [allSessionsTraces.data?.traces, currentPage]);
-
-  // Auto-load more traces when there are more available
-  React.useEffect(() => {
-    if (
-      hasMoreTraces &&
-      !allSessionsTraces.isLoading &&
-      allSessionsTraces.data?.traces
-    ) {
-      setCurrentPage((prev) => prev + 1);
-    }
-  }, [
-    hasMoreTraces,
-    allSessionsTraces.isLoading,
-    allSessionsTraces.data?.traces,
-  ]);
-
-  // Reset trace pagination when date range changes
-  React.useEffect(() => {
-    if (dateRange?.from && dateRange?.to) {
-      setAllTraces([]);
-      setCurrentPage(0);
-      setHasMoreTraces(true);
-    }
-  }, [dateRange?.from, dateRange?.to]);
 
   // Create a wrapper object
   const allSessionsTracesData = React.useMemo(
     () => ({
-      traces: allTraces,
+      traces: allSessionsTraces.data?.traces ?? [],
     }),
-    [allTraces],
+    [allSessionsTraces.data?.traces],
   );
 
   // Fetch manual ratings from database
-  const manualRatingsQuery = api.scores.getManualRatings.useMutation();
+  const manualRatingsQuery = api.scores.getManualRatings.useMutation({
+    onError: (error) => {
+      console.error("Failed to fetch manual ratings:", error);
+    },
+  });
 
   // Fetch ratings
   React.useEffect(() => {
     if (projectId && dateRange?.from && dateRange?.to) {
+      console.log("📊 Fetching manual ratings for date range:", {
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      });
       manualRatingsQuery.mutate({
         projectId,
         fromDate: dateRange.from,
@@ -454,19 +420,35 @@ export default function JuspayDashboard() {
   // Convert manual ratings data to Map for easier access
   const manualRatings = React.useMemo(() => {
     const ratingsMap = new Map<string, string>();
-    if (manualRatingsQuery.data && allTraces.length > 0) {
+    // Add safety checks to prevent errors during loading
+    if (!manualRatingsQuery.data) {
+      return ratingsMap;
+    }
+
+    // Check if traces array exists (not null/undefined), even if empty
+    if (
+      allSessionsTracesData.traces &&
+      allSessionsTracesData.traces.length > 0
+    ) {
       // Create a Set of trace IDs for fast lookup
-      const traceIds = new Set(allTraces.map(t => t.id));
-      
+      const traceIds = new Set(allSessionsTracesData.traces.map((t) => t.id));
+
       manualRatingsQuery.data.forEach((rating) => {
         // Only include rating if the trace exists in current date range
         if (traceIds.has(rating.traceId)) {
           ratingsMap.set(rating.traceId, rating.rating);
         }
       });
+    } else if (allSessionsTracesData.traces) {
+      // If traces array exists but is empty, still show all ratings
+      // (they just won't be filtered by current date range)
+      manualRatingsQuery.data.forEach((rating) => {
+        ratingsMap.set(rating.traceId, rating.rating);
+      });
     }
+
     return ratingsMap;
-  }, [manualRatingsQuery.data, allTraces]);
+  }, [manualRatingsQuery.data, allSessionsTracesData.traces]);
 
   // Function to update manual rating for a trace
   const updateManualRating = React.useCallback(
@@ -490,7 +472,6 @@ export default function JuspayDashboard() {
   );
 
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [sessionPage, setSessionPage] = useState(0);
 
   // Resizable panels state
   const [rightPanelWidth, setRightPanelWidth] = useState(450);
@@ -507,22 +488,6 @@ export default function JuspayDashboard() {
         from: newDateRange.from.toISOString(),
         to: newDateRange.to.toISOString(),
       });
-
-      // Cancel previous loading and start new one immediately
-      setIsLoadingData(true);
-
-      // Clear existing data immediately to show loading state
-      setAllSessions([]);
-      setAllTraces([]);
-      setAllScores([]);
-
-      // Reset pagination
-      setSessionPage(0);
-      setCurrentPage(0);
-      setScoresPage(0);
-      setHasMoreSessions(true);
-      setHasMoreTraces(true);
-      setHasMoreScores(true);
 
       // Set new date range (this will trigger new API calls)
       setTimeRange({ from: newDateRange.from, to: newDateRange.to });
@@ -612,10 +577,7 @@ export default function JuspayDashboard() {
     }
   };
 
-  // Fetch sessions based on date range with pagination
-  const [allSessions, setAllSessions] = useState<any[]>([]);
-  const [hasMoreSessions, setHasMoreSessions] = useState(true);
-
+  // Fetch sessions based on date range - SINGLE QUERY like traces page
   const sessions = api.sessions.all.useQuery(
     {
       projectId,
@@ -633,75 +595,24 @@ export default function JuspayDashboard() {
           value: dateRange.to,
         },
       ],
-      page: sessionPage,
-      limit: 99,
+      page: 0,
+      limit: 7000, // Optimal limit for performance
       orderBy: { column: "createdAt", order: "DESC" },
     },
     {
       enabled: !!projectId && !!dateRange?.from && !!dateRange?.to,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
     },
   );
-
-  // Accumulate sessions from pagination
-  React.useEffect(() => {
-    if (sessions.data?.sessions) {
-      const newSessions = sessions.data.sessions;
-      if (sessionPage === 0) {
-        // First page - replace all sessions
-        setAllSessions(newSessions);
-      } else {
-        // Subsequent pages - append to existing sessions
-        setAllSessions((prev) => [...prev, ...newSessions]);
-      }
-
-      // Check if we have more sessions to load
-      if (newSessions.length < 99) {
-        setHasMoreSessions(false);
-      }
-    }
-  }, [sessions.data?.sessions, sessionPage]);
-
-  // Auto-load more sessions when there are more available
-  React.useEffect(() => {
-    if (hasMoreSessions && !sessions.isLoading && sessions.data?.sessions) {
-      setSessionPage((prev) => prev + 1);
-    }
-  }, [hasMoreSessions, sessions.isLoading, sessions.data?.sessions]);
-
-  // Reset session pagination when date range changes with loading state
-  React.useEffect(() => {
-    if (dateRange?.from && dateRange?.to) {
-      setIsLoadingData(true);
-      setAllSessions([]);
-      setSessionPage(0);
-      setHasMoreSessions(true);
-
-      // Clear loading state after a short delay to prevent race conditions
-      const timer = setTimeout(() => {
-        setIsLoadingData(false);
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }
-  }, [projectId, dateRange?.from, dateRange?.to]);
 
   // Create wrapper for sessions
   const allSessionsData = React.useMemo(
     () => ({
-      sessions: allSessions,
+      sessions: sessions.data?.sessions ?? [],
     }),
-    [allSessions],
+    [sessions.data?.sessions],
   );
-
-  // Reset when date range changes
-  React.useEffect(() => {
-    if (dateRange?.from && dateRange?.to) {
-      console.log("🔄 SESSIONS - Date range changed, will refetch:", {
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-      });
-    }
-  }, [dateRange?.from, dateRange?.to]);
 
   // Fetch all tags for filtering (no limit issues!)
   const traceFilterOptions = api.traces.filterOptions.useQuery(
@@ -721,11 +632,7 @@ export default function JuspayDashboard() {
     },
   );
 
-  // Fetch scores with pagination
-  const [allScores, setAllScores] = React.useState<any[]>([]);
-  const [scoresPage, setScoresPage] = React.useState(0);
-  const [hasMoreScores, setHasMoreScores] = React.useState(true);
-
+  // Fetch scores - SINGLE QUERY like traces page
   const scoresQuery = api.scores.all.useQuery(
     {
       projectId,
@@ -737,58 +644,34 @@ export default function JuspayDashboard() {
           value: "genius-feedback",
         },
       ],
-      page: scoresPage,
-      limit: 99,
+      page: 0,
+      limit: 7000, // Optimal limit for performance
       orderBy: { column: "timestamp", order: "DESC" },
     },
     {
-      enabled: !!projectId && !!allTraces.length && hasMoreScores,
+      enabled: !!projectId && !!dateRange?.from && !!dateRange?.to,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
     },
   );
-
-  // Accumulate scores from pagination
-  React.useEffect(() => {
-    if (scoresQuery.data?.scores) {
-      const newScores = scoresQuery.data.scores;
-      if (scoresPage === 0) {
-        setAllScores(newScores);
-      } else {
-        setAllScores((prev) => [...prev, ...newScores]);
-      }
-
-      if (newScores.length < 99) {
-        setHasMoreScores(false);
-      }
-    }
-  }, [scoresQuery.data?.scores, scoresPage]);
-
-  // Auto-load more scores when there are more available
-  React.useEffect(() => {
-    if (hasMoreScores && !scoresQuery.isLoading && scoresQuery.data?.scores) {
-      setScoresPage((prev) => prev + 1);
-    }
-  }, [hasMoreScores, scoresQuery.isLoading, scoresQuery.data?.scores]);
-
-  // Reset scores pagination when date range changes
-  React.useEffect(() => {
-    if (dateRange?.from && dateRange?.to) {
-      setAllScores([]);
-      setScoresPage(0);
-      setHasMoreScores(true);
-    }
-  }, [dateRange?.from, dateRange?.to]);
 
   // Simple scores data wrapper
   const allScoresData = React.useMemo(
     () => ({
-      scores: allScores,
+      scores: scoresQuery.data?.scores ?? [],
     }),
-    [allScores],
+    [scoresQuery.data?.scores],
   );
 
   // Create a map of session IDs to their evaluation status (correct/incorrect)
   const sessionEvaluationMap = React.useMemo(() => {
-    if (!allScoresData.scores.length || !allSessionsTracesData.traces.length) {
+    // Add safety checks
+    if (
+      !allScoresData.scores ||
+      !allSessionsTracesData.traces ||
+      !allScoresData.scores.length ||
+      !allSessionsTracesData.traces.length
+    ) {
       return new Map<string, "correct" | "incorrect" | "mixed">();
     }
 
@@ -827,7 +710,8 @@ export default function JuspayDashboard() {
 
   // Create a map of session IDs to their tags
   const sessionToTagsMap = React.useMemo(() => {
-    if (!allSessionsTracesData.traces.length)
+    // Add safety check
+    if (!allSessionsTracesData.traces || !allSessionsTracesData.traces.length)
       return new Map<string, string[]>();
 
     const map = new Map<string, string[]>();
@@ -928,6 +812,11 @@ export default function JuspayDashboard() {
   );
 
   const filteredSessions = React.useMemo(() => {
+    // Add safety check
+    if (!allSessionsData.sessions) {
+      return [];
+    }
+
     return allSessionsData.sessions.filter((session) => {
       // Search filter
       const matchesSearch = searchQuery
@@ -1055,7 +944,8 @@ export default function JuspayDashboard() {
 
   // Enhanced statistics with three categories
   const statistics = React.useMemo(() => {
-    if (!allSessionsTracesData.traces.length) {
+    // Add safety check
+    if (!allSessionsTracesData.traces || !allSessionsTracesData.traces.length) {
       return {
         totalQueries: 0,
         merchantQueries: 0,
@@ -1236,7 +1126,8 @@ export default function JuspayDashboard() {
 
   // Separate statistics for filter cards - always show total counts regardless of category filters
   const cardStatistics = React.useMemo(() => {
-    if (!allSessionsTracesData.traces.length) {
+    // Add safety check
+    if (!allSessionsTracesData.traces || !allSessionsTracesData.traces.length) {
       return {
         merchantQueries: 0,
         geniusTeamQueries: 0,
@@ -1433,7 +1324,7 @@ export default function JuspayDashboard() {
     }
   }, [
     selectedSessionId,
-    filteredSessions.length,
+    filteredSessions,
     sessions.isLoading,
     hasAutoScrolled,
     sessionIdFromUrl,
@@ -1515,7 +1406,8 @@ export default function JuspayDashboard() {
 
   // Calculate detailed statistics for the table
   const detailedStatistics = React.useMemo(() => {
-    if (!allSessionsTracesData.traces.length) {
+    // Add safety check
+    if (!allSessionsTracesData.traces || !allSessionsTracesData.traces.length) {
       return {
         merchant: {
           totalSessions: 0,
@@ -2644,16 +2536,14 @@ export default function JuspayDashboard() {
 
             {/* Sessions List */}
             <ScrollArea className="flex-1">
-              {sessions.isLoading || isLoadingData ? (
-                <div className="space-y-3 p-4 pb-8">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-20 w-full" />
-                  ))}
-                  {isLoadingData && (
-                    <div className="p-4 text-center text-xs text-muted-foreground">
-                      Loading data for new date range...
-                    </div>
-                  )}
+              {sessions.isLoading || allSessionsTraces.isLoading ? (
+                <div className="flex h-full items-center justify-center p-8">
+                  <div className="text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Loading sessions...
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="p-2 pb-8">
@@ -2741,10 +2631,13 @@ export default function JuspayDashboard() {
               {/* Conversation Messages */}
               <ScrollArea className="flex-1 p-4">
                 {sessionTraces.isLoading ? (
-                  <div className="space-y-4 pb-8">
-                    {[...Array(3)].map((_, i) => (
-                      <Skeleton key={i} className="h-32 w-full" />
-                    ))}
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        Loading messages...
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="mx-auto max-w-4xl space-y-4 pb-8">
@@ -3734,8 +3627,11 @@ function TraceMessage({
     },
     {
       enabled: !!trace.id && !!projectId,
+      retry: 1, // Only retry once on error
       // Poll every 5 seconds if we don't have a genius-feedback score yet
       refetchInterval: (query) => {
+        // Don't poll if there's an error
+        if (query.state.error) return false;
         if (!query.state.data) return false;
         const hasGeniusFeedback = query.state.data.scores?.some(
           (score: any) => score.name === "genius-feedback",
