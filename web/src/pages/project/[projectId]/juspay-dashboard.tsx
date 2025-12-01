@@ -480,7 +480,6 @@ export default function JuspayDashboard() {
   const [isMobileRightPanelOpen, setIsMobileRightPanelOpen] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showManualRatingsModal, setShowManualRatingsModal] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(false);
 
   const handleDateRangeChange = React.useCallback(
     (newDateRange: { from: Date; to: Date }) => {
