@@ -884,16 +884,49 @@ export const scoresRouter = createTRPCRouter({
     )
     .mutation(async ({ input }) => {
       try {
+        const filters: Array<
+          | {
+              column: string;
+              type: "string";
+              operator: "=";
+              value: string;
+            }
+          | {
+              column: string;
+              type: "datetime";
+              operator: ">=" | "<=";
+              value: Date;
+            }
+        > = [
+          {
+            column: "name",
+            type: "string",
+            operator: "=",
+            value: "manual-rating",
+          },
+        ];
+
+        // Add date range filters if provided
+        if (input.fromDate) {
+          filters.push({
+            column: "timestamp",
+            type: "datetime",
+            operator: ">=",
+            value: input.fromDate,
+          });
+        }
+        if (input.toDate) {
+          filters.push({
+            column: "timestamp",
+            type: "datetime",
+            operator: "<=",
+            value: input.toDate,
+          });
+        }
+
         const scores = await getScoresUiTable({
           projectId: input.projectId,
-          filter: [
-            {
-              column: "name",
-              type: "string",
-              operator: "=",
-              value: "manual-rating",
-            },
-          ],
+          filter: filters,
           orderBy: { column: "timestamp", order: "DESC" as const },
           limit: 7000,
           offset: 0,

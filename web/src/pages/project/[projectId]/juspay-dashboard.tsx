@@ -66,16 +66,6 @@ export default function JuspayDashboard() {
   const router = useRouter();
   const projectId = router.query.projectId as string;
 
-  React.useEffect(() => {
-    console.log("🚀 PRODUCTION DEBUG - JuspayDashboard loaded:", {
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      userAgent:
-        typeof window !== "undefined" ? window.navigator.userAgent : "SSR",
-      url: typeof window !== "undefined" ? window.location.href : "SSR",
-    });
-  }, []);
-
   // Use the same date range approach as traces page for consistency
   const { timeRange, setTimeRange } = useTableDateRange(projectId, {
     defaultRelativeAggregation: "last1Day",
@@ -245,7 +235,6 @@ export default function JuspayDashboard() {
     // Update URL without navigation
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, "", newUrl);
-    console.log("🔗 URL updated for sharing:", newUrl);
   }, []);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
@@ -368,10 +357,6 @@ export default function JuspayDashboard() {
   // Fetch ratings
   React.useEffect(() => {
     if (projectId && dateRange?.from && dateRange?.to) {
-      console.log("📊 Fetching manual ratings for date range:", {
-        from: dateRange.from.toISOString(),
-        to: dateRange.to.toISOString(),
-      });
       manualRatingsQuery.mutate({
         projectId,
         fromDate: dateRange.from,
@@ -439,13 +424,8 @@ export default function JuspayDashboard() {
           ratingsMap.set(rating.traceId, rating.rating);
         }
       });
-    } else if (allSessionsTracesData.traces) {
-      // If traces array exists but is empty, still show all ratings
-      // (they just won't be filtered by current date range)
-      manualRatingsQuery.data.forEach((rating) => {
-        ratingsMap.set(rating.traceId, rating.rating);
-      });
     }
+    // Note: If traces array is empty, we return an empty map since there are no traces to show ratings for
 
     return ratingsMap;
   }, [manualRatingsQuery.data, allSessionsTracesData.traces]);
@@ -483,11 +463,6 @@ export default function JuspayDashboard() {
 
   const handleDateRangeChange = React.useCallback(
     (newDateRange: { from: Date; to: Date }) => {
-      console.log("📅 Date range changed:", {
-        from: newDateRange.from.toISOString(),
-        to: newDateRange.to.toISOString(),
-      });
-
       // Set new date range (this will trigger new API calls)
       setTimeRange({ from: newDateRange.from, to: newDateRange.to });
     },
@@ -572,7 +547,6 @@ export default function JuspayDashboard() {
       params.set("sessionId", sessionId);
       const newUrl = `${window.location.pathname}?${params.toString()}`;
       window.history.replaceState({}, "", newUrl);
-      console.log("🔗 Session URL updated for sharing:", newUrl);
     }
   };
 
