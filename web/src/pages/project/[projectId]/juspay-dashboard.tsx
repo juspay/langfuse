@@ -456,8 +456,8 @@ export default function JuspayDashboard() {
     const ratingsMap = new Map<string, string>();
     if (manualRatingsQuery.data && allTraces.length > 0) {
       // Create a Set of trace IDs for fast lookup
-      const traceIds = new Set(allTraces.map(t => t.id));
-      
+      const traceIds = new Set(allTraces.map((t) => t.id));
+
       manualRatingsQuery.data.forEach((rating) => {
         // Only include rating if the trace exists in current date range
         if (traceIds.has(rating.traceId)) {
