@@ -3790,6 +3790,34 @@ function TraceMessage({
       // Parse if it's a string
       if (typeof parsed === "string") {
         parsed = JSON.parse(parsed);
+        // Check if it's still a string (double-stringified)
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed);
+        }
+      }
+
+      // IMPORTANT: Parse outcome.output if it's a string (double-stringified at nested level)
+      if (parsed.outcome?.output && typeof parsed.outcome.output === "string") {
+        // Check if it starts with { or [ (likely JSON)
+        const trimmed = parsed.outcome.output.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          try {
+            // Try to parse as JSON - but handle malformed escape sequences first
+            // Some strings may have invalid escape sequences like \_ which are not valid JSON
+            let sanitizedOutput = parsed.outcome.output;
+            sanitizedOutput = sanitizedOutput.replace(
+              /\\([^"\\\/bfnrtu])/g,
+              "$1",
+            );
+            parsed.outcome.output = JSON.parse(sanitizedOutput);
+          } catch (e) {
+            // If parsing fails, treat the string itself as the text content
+            parsed.outcome.output = { text: parsed.outcome.output };
+          }
+        } else {
+          // It's plain text (markdown), not JSON - wrap it directly
+          parsed.outcome.output = { text: parsed.outcome.output };
+        }
       }
 
       // Try 1: Extract outcome.output.text with replacements FIRST
@@ -3819,7 +3847,11 @@ function TraceMessage({
         if (typeof parsed.outcome.output === "string") {
           return { text: parsed.outcome.output, isJson: false };
         }
-        // If outcome.output is an object, return as JSON
+        // If outcome.output is an object with text field, extract it
+        else if (parsed.outcome.output.text) {
+          return { text: parsed.outcome.output.text, isJson: false };
+        }
+        // If outcome.output is an object without text, return as JSON
         else {
           return { json: parsed.outcome.output, isJson: true };
         }
