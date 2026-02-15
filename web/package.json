@@ -96,7 +96,7 @@
     "@trpc/client": "^11.4.4",
     "@trpc/next": "^11.4.4",
     "@trpc/react-query": "^11.4.4",
-    "@trpc/server": "^11.4.4",
+    "@trpc/server": "^11.8.0",
     "@uiw/codemirror-themes": "^4.23.7",
     "@uiw/react-codemirror": "^4.24.1",
     "ai": "^3.4.9",
