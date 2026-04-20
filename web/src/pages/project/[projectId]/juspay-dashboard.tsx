@@ -1683,7 +1683,7 @@ export default function JuspayDashboard() {
       <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
         {/* Mobile Menu Button - Only show when sidebar is closed */}
         {isMobile && !isMobileMenuOpen && (
-          <div className="absolute left-4 top-6 z-50 shadow-lg lg:hidden">
+          <div className="absolute top-6 left-4 z-50 shadow-lg lg:hidden">
             <Button
               variant="outline"
               size="sm"
@@ -1705,7 +1705,7 @@ export default function JuspayDashboard() {
         {/* Left Sidebar - Sessions List */}
         <div
           className={cn(
-            "border-r bg-background transition-all duration-300",
+            "bg-background border-r transition-all duration-300",
             isMobile
               ? cn(
                   "absolute inset-y-0 left-0 z-40 w-80 transform",
@@ -1736,7 +1736,7 @@ export default function JuspayDashboard() {
             <div
               className={cn(
                 "flex-shrink-0 border-b",
-                isMobile ? "px-3 pb-4 pt-8" : "p-4",
+                isMobile ? "px-3 pt-8 pb-4" : "p-4",
               )}
             >
               <Collapsible
@@ -1754,15 +1754,15 @@ export default function JuspayDashboard() {
                   >
                     <Calendar className="mr-2 h-4 w-4 flex-shrink-0" />
                     <div className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
-                      <span className="whitespace-nowrap text-xs text-muted-foreground">
+                      <span className="text-muted-foreground text-xs whitespace-nowrap">
                         Select date range
                       </span>
                       <span
                         className={cn(
-                          "w-full font-medium leading-tight",
+                          "w-full leading-tight font-medium",
                           isMobile
-                            ? "break-words text-xs"
-                            : "break-words text-xs",
+                            ? "text-xs break-words"
+                            : "text-xs break-words",
                         )}
                       >
                         {dateRange.from.toLocaleDateString()} -{" "}
@@ -2037,7 +2037,7 @@ export default function JuspayDashboard() {
                           ? "100+"
                           : filteredSessions?.length || 0}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-muted-foreground text-xs">
                         sessions
                       </span>
                     </div>
@@ -2047,7 +2047,7 @@ export default function JuspayDashboard() {
                         <span className="font-bold text-red-600 dark:text-red-400">
                           {statistics.incorrectQueries}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           incorrect
                         </span>
                       </div>
@@ -2057,7 +2057,7 @@ export default function JuspayDashboard() {
                         <span className="font-bold text-gray-600 dark:text-gray-400">
                           {statistics.totalQueries}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           total
                         </span>
                       </div>
@@ -2066,7 +2066,7 @@ export default function JuspayDashboard() {
                         <span className="font-bold text-green-600 dark:text-green-400">
                           ({statistics.correctPercentage}%
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           correct)
                         </span>
                       </div>
@@ -2103,7 +2103,7 @@ export default function JuspayDashboard() {
                           ? "9999+"
                           : cardStatistics.merchantQueries}
                         {showOnlyMerchant && (
-                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-green-600">
+                          <div className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-green-600">
                             <span className="text-xs text-white">✓</span>
                           </div>
                         )}
@@ -2147,7 +2147,7 @@ export default function JuspayDashboard() {
                           ? "9999+"
                           : cardStatistics.geniusTeamQueries}
                         {showOnlyTeam && (
-                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-blue-600">
+                          <div className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-blue-600">
                             <span className="text-xs text-white">✓</span>
                           </div>
                         )}
@@ -2195,7 +2195,7 @@ export default function JuspayDashboard() {
                           ? "9999+"
                           : cardStatistics.juspayGeniusMerchantQueries}
                         {showOnlyJuspayOthers && (
-                          <div className="absolute -right-1 -top-1 flex h-3 w-3 items-center justify-center rounded-full bg-purple-600">
+                          <div className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-purple-600">
                             <span className="text-xs text-white">✓</span>
                           </div>
                         )}
@@ -2224,7 +2224,7 @@ export default function JuspayDashboard() {
               )}
             >
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
                   placeholder="Search sessions..."
                   value={searchQuery}
@@ -2339,7 +2339,7 @@ export default function JuspayDashboard() {
 
                   {/* Advanced Filters Modal */}
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <Card className="w-full max-w-md bg-background shadow-lg">
+                    <Card className="bg-background w-full max-w-md shadow-lg">
                       <div className="flex items-center justify-between border-b p-4">
                         <h3 className="text-lg font-semibold">
                           Advanced Filters
@@ -2387,7 +2387,7 @@ export default function JuspayDashboard() {
 
                                   {/* Search Input */}
                                   <div className="relative">
-                                    <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                                    <Search className="text-muted-foreground absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2" />
                                     <Input
                                       placeholder="Search emails..."
                                       value={newEmailInput}
@@ -2441,7 +2441,7 @@ export default function JuspayDashboard() {
                                         return filteredEmails.map((email) => (
                                           <label
                                             key={email}
-                                            className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-accent"
+                                            className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded p-1"
                                           >
                                             <input
                                               type="checkbox"
@@ -2636,7 +2636,7 @@ export default function JuspayDashboard() {
                 </>
               )}
 
-              <div className="text-xs text-muted-foreground">
+              <div className="text-muted-foreground text-xs">
                 Showing: {filteredSessions?.length || 0} of{" "}
                 {allSessionsData.sessions.length || 0} sessions
               </div>
@@ -2650,7 +2650,7 @@ export default function JuspayDashboard() {
                     <Skeleton key={i} className="h-20 w-full" />
                   ))}
                   {isLoadingData && (
-                    <div className="p-4 text-center text-xs text-muted-foreground">
+                    <div className="text-muted-foreground p-4 text-center text-xs">
                       Loading data for new date range...
                     </div>
                   )}
@@ -2673,16 +2673,16 @@ export default function JuspayDashboard() {
                         key={session.id}
                         data-session-id={session.id}
                         className={cn(
-                          "mb-3 cursor-pointer p-3 transition-colors hover:bg-accent",
+                          "hover:bg-accent mb-3 cursor-pointer p-3 transition-colors",
                           selectedSessionId === session.id &&
-                            "border-2 border-blue-500 bg-accent",
+                            "bg-accent border-2 border-blue-500",
                         )}
                         onClick={() => handleSessionSelect(session.id)}
                       >
                         <div className="space-y-2">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-muted-foreground" />
+                              <User className="text-muted-foreground h-4 w-4" />
                               <span className="text-sm font-medium">
                                 {session.userIds?.[0] || "Unknown User"}
                               </span>
@@ -2692,11 +2692,11 @@ export default function JuspayDashboard() {
                             </Badge>
                           </div>
 
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-muted-foreground text-xs">
                             Session: {session.id.slice(0, 16)}...
                           </div>
 
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="text-muted-foreground flex items-center gap-2 text-xs">
                             <Clock className="h-3 w-3" />
                             {new Date(displayTime).toLocaleString()}
                           </div>
@@ -2720,13 +2720,13 @@ export default function JuspayDashboard() {
           {selectedSessionId ? (
             <>
               {/* Session Header */}
-              <div className="border-b bg-muted/50 p-4">
+              <div className="bg-muted/50 border-b p-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold">
                       Session: {selectedSessionId}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       {sessionTraces.data?.traces.length || 0} messages
                     </p>
                   </div>
@@ -2780,7 +2780,7 @@ export default function JuspayDashboard() {
               </ScrollArea>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-muted-foreground">
+            <div className="text-muted-foreground flex flex-1 items-center justify-center">
               <div className="text-center">
                 <User className="mx-auto mb-4 h-12 w-12 opacity-50" />
                 <p>Select a session to view conversation</p>
@@ -2821,7 +2821,7 @@ export default function JuspayDashboard() {
             <DialogTrigger asChild>
               <Button
                 className={cn(
-                  "absolute bottom-6 right-6 z-40 h-16 w-16 rounded-full shadow-lg transition-all duration-300 hover:scale-110",
+                  "absolute right-6 bottom-6 z-40 h-16 w-16 rounded-full shadow-lg transition-all duration-300 hover:scale-110",
                   "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
                   "flex flex-col items-center justify-center gap-1",
                 )}
@@ -2848,7 +2848,7 @@ export default function JuspayDashboard() {
                         <div className="truncate text-xl font-bold text-blue-600 dark:text-blue-400">
                           {statistics.totalSessions}
                         </div>
-                        <div className="text-xs leading-tight text-muted-foreground">
+                        <div className="text-muted-foreground text-xs leading-tight">
                           Total Sessions
                         </div>
                       </div>
@@ -2859,7 +2859,7 @@ export default function JuspayDashboard() {
                         <div className="truncate text-xl font-bold text-green-600 dark:text-green-400">
                           {statistics.totalQueries}
                         </div>
-                        <div className="text-xs leading-tight text-muted-foreground">
+                        <div className="text-muted-foreground text-xs leading-tight">
                           Total Queries
                         </div>
                       </div>
@@ -2870,7 +2870,7 @@ export default function JuspayDashboard() {
                         <div className="truncate text-xl font-bold text-purple-600 dark:text-purple-400">
                           {statistics.correctPercentage}%
                         </div>
-                        <div className="text-xs leading-tight text-muted-foreground">
+                        <div className="text-muted-foreground text-xs leading-tight">
                           Overall Accuracy
                         </div>
                       </div>
@@ -2883,7 +2883,7 @@ export default function JuspayDashboard() {
                       <h3 className="text-lg font-semibold">
                         Detailed Breakdown by User Category
                       </h3>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Statistics filtered by current date range and applied
                         filters
                       </p>
@@ -3071,11 +3071,11 @@ export default function JuspayDashboard() {
         {/* Right Resizer Handle */}
         {isDesktop && !isMobile && (
           <div
-            className="w-1 cursor-col-resize bg-border transition-colors hover:bg-primary"
+            className="bg-border hover:bg-primary w-1 cursor-col-resize transition-colors"
             onMouseDown={handleMouseDown}
           >
             <div className="flex h-full items-center justify-center">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
+              <GripVertical className="text-muted-foreground h-4 w-4" />
             </div>
           </div>
         )}
@@ -3092,7 +3092,7 @@ export default function JuspayDashboard() {
         {(!isMobile || isMobileRightPanelOpen) && (
           <div
             className={cn(
-              "border-l bg-background",
+              "bg-background border-l",
               isMobile
                 ? cn(
                     "absolute inset-y-0 right-0 z-50 w-80 transform transition-transform duration-300",
@@ -3131,7 +3131,7 @@ export default function JuspayDashboard() {
                   <div className="space-y-4 pb-6">
                     {/* Show all tool calls/observations */}
                     {traceDetails.isLoading ? (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-muted-foreground text-sm">
                         Loading tool calls...
                       </div>
                     ) : (
@@ -3140,7 +3140,7 @@ export default function JuspayDashboard() {
                           observations.map((obs: any, index: number) => (
                             <Collapsible key={obs.id} defaultOpen={index === 0}>
                               <Card className="mb-4 overflow-hidden">
-                                <CollapsibleTrigger className="w-full p-3 transition-all duration-200 hover:bg-accent">
+                                <CollapsibleTrigger className="hover:bg-accent w-full p-3 transition-all duration-200">
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs text-white transition-transform duration-200 group-data-[state=open]:rotate-90">
@@ -3175,7 +3175,7 @@ export default function JuspayDashboard() {
                             </Collapsible>
                           ))
                         ) : (
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-muted-foreground text-sm">
                             No tool calls found for this trace
                           </div>
                         )}
@@ -3191,7 +3191,7 @@ export default function JuspayDashboard() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
                     Click on a message to view details
                   </div>
                 )}
@@ -3314,23 +3314,23 @@ function ManualRatingsContent({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-          <div className="text-sm text-muted-foreground">Total Rated</div>
+          <div className="text-muted-foreground text-sm">Total Rated</div>
         </Card>
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-green-600">
             {stats.correct}
           </div>
-          <div className="text-sm text-muted-foreground">Correct</div>
+          <div className="text-muted-foreground text-sm">Correct</div>
         </Card>
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-yellow-600">
             {stats.needsWork}
           </div>
-          <div className="text-sm text-muted-foreground">Needs Work</div>
+          <div className="text-muted-foreground text-sm">Needs Work</div>
         </Card>
         <Card className="p-4 text-center">
           <div className="text-2xl font-bold text-red-600">{stats.wrong}</div>
-          <div className="text-sm text-muted-foreground">Wrong</div>
+          <div className="text-muted-foreground text-sm">Wrong</div>
         </Card>
       </div>
 
@@ -3410,7 +3410,7 @@ function ManualRatingsContent({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-muted-foreground text-sm">
                     {new Date(item.timestamp).toLocaleString()}
                   </div>
                 </TableCell>
@@ -3540,7 +3540,7 @@ function ObservationDetails({
   })();
 
   if (observation.isLoading) {
-    return <div className="text-xs text-muted-foreground">Loading...</div>;
+    return <div className="text-muted-foreground text-xs">Loading...</div>;
   }
 
   return (
@@ -3663,7 +3663,7 @@ function FinalResponseSection({
     return (
       <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-950/20">
         <div className="p-4">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-muted-foreground text-sm">
             Loading final response...
           </div>
         </div>
@@ -3810,7 +3810,7 @@ function TraceMessage({
               "$1",
             );
             parsed.outcome.output = JSON.parse(sanitizedOutput);
-          } catch (e) {
+          } catch (_e) {
             // If parsing fails, treat the string itself as the text content
             parsed.outcome.output = { text: parsed.outcome.output };
           }
@@ -3892,7 +3892,7 @@ function TraceMessage({
                   />
                 </div>
               ) : (
-                <div className="whitespace-pre-wrap text-sm">
+                <div className="text-sm whitespace-pre-wrap">
                   {inputContent.text}
                 </div>
               )}
@@ -3905,7 +3905,7 @@ function TraceMessage({
       <div className="flex justify-start">
         <Card
           className={cn(
-            "max-w-[80%] cursor-pointer p-4 transition-colors hover:bg-accent",
+            "hover:bg-accent max-w-[80%] cursor-pointer p-4 transition-colors",
             isSelected && "border-primary bg-accent",
           )}
           onClick={() => onSelect(trace.id, trace.timestamp)}
@@ -3917,7 +3917,7 @@ function TraceMessage({
             <div className="flex-1">
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-xs font-medium">Assistant Ans</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {new Date(trace.timestamp).toLocaleTimeString()}
                 </span>
                 {traceMetric?.level === "ERROR" && (
@@ -4039,7 +4039,7 @@ function TraceMessage({
                   <div className="space-y-2">
                     {/* Judge Response */}
                     <div>
-                      <div className="mb-1 text-xs font-medium text-muted-foreground">
+                      <div className="text-muted-foreground mb-1 text-xs font-medium">
                         Judge Response:
                       </div>
                       <div className="rounded-md border border-purple-200 bg-purple-50 p-2 dark:border-purple-800 dark:bg-purple-950/20">
@@ -4061,7 +4061,7 @@ function TraceMessage({
                     {/* Judgement Reason */}
                     {geniusFeedbackScore.comment && (
                       <div>
-                        <div className="mb-1 text-xs font-medium text-muted-foreground">
+                        <div className="text-muted-foreground mb-1 text-xs font-medium">
                           Judgement Reason:
                         </div>
                         <div className="rounded-md border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
@@ -4075,7 +4075,7 @@ function TraceMessage({
                 </div>
               )}
 
-              <div className="mt-2 text-xs text-muted-foreground">
+              <div className="text-muted-foreground mt-2 text-xs">
                 Click to view tool calls →
               </div>
             </div>

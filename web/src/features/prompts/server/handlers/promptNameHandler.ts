@@ -6,8 +6,9 @@ import { withMiddlewares } from "@/src/features/public-api/server/withMiddleware
 import { authorizePromptRequestOrThrow } from "../utils/authorizePromptRequest";
 import {
   GetPromptByNameSchema,
-  LangfuseNotFoundError,
   PRODUCTION_LABEL,
+  UnauthorizedError,
+  ForbiddenError,
 } from "@langfuse/shared";
 import { RateLimitService } from "@/src/features/public-api/server/RateLimitService";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
@@ -17,7 +18,20 @@ const getPromptNameHandler = async (
   req: NextApiRequest,
   res: NextApiResponse,
 ) => {
-  const authCheck = await authorizePromptRequestOrThrow(req);
+  let authCheck: Awaited<ReturnType<typeof authorizePromptRequestOrThrow>>;
+  try {
+    authCheck = await authorizePromptRequestOrThrow(req);
+  } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      res.status(200).json({
+        accessDenied: true,
+        message: "You are not authorized to access this project",
+        prompt: null,
+      });
+      return;
+    }
+    throw error;
+  }
 
   const rateLimitCheck = await RateLimitService.getInstance().rateLimitRequest(
     authCheck.scope,
@@ -41,15 +55,8 @@ const getPromptNameHandler = async (
   });
 
   if (!prompt) {
-    let errorMessage = `Prompt not found: '${promptName}'`;
-
-    if (version) {
-      errorMessage += ` with version ${version}`;
-    } else {
-      errorMessage += ` with label '${label ?? PRODUCTION_LABEL}'`;
-    }
-
-    throw new LangfuseNotFoundError(errorMessage);
+    res.status(204).end();
+    return;
   }
 
   res.status(200).json({
