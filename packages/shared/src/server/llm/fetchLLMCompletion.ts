@@ -465,14 +465,49 @@ export async function fetchLLMCompletion(
           ? { method: "functionCalling" as const }
           : undefined;
 
-      const structuredOutput = await (chatModel as ChatOpenAI)
-        .withStructuredOutput(
-          params.structuredOutputSchema,
-          structuredOutputConfig,
-        )
-        .invoke(finalMessages, runConfig);
+      try {
+        const structuredOutput = await (chatModel as ChatOpenAI)
+          .withStructuredOutput(
+            params.structuredOutputSchema,
+            structuredOutputConfig,
+          )
+          .invoke(finalMessages, runConfig);
 
-      return structuredOutput;
+        return structuredOutput;
+      } catch (structuredErr) {
+        // Fallback: some OpenAI-compatible providers return markdown-wrapped JSON
+        // (e.g. ```json\n{...}\n``` or ## headers) that withStructuredOutput can't parse.
+        // Try invoking the model directly and extracting JSON from the raw response.
+        const errMsg =
+          structuredErr instanceof Error
+            ? structuredErr.message
+            : String(structuredErr);
+
+        if (!errMsg.includes("is not valid JSON")) {
+          throw structuredErr;
+        }
+
+        logger.warn(
+          "Structured output failed with JSON parse error, attempting raw extraction fallback",
+        );
+
+        const rawResponse = await chatModel
+          .pipe(new StringOutputParser())
+          .invoke(finalMessages, runConfig);
+
+        const jsonStr = extractJsonFromLLMResponse(rawResponse);
+        if (!jsonStr) {
+          throw structuredErr;
+        }
+
+        const parsed = JSON.parse(jsonStr);
+        const validated = params.structuredOutputSchema.safeParse(parsed);
+        if (!validated.success) {
+          throw structuredErr;
+        }
+
+        return validated.data;
+      }
     }
 
     if (tools && tools.length > 0) {
@@ -647,6 +682,81 @@ function processOpenAIBaseURL(params: {
   }
 
   return url.replace("{model}", modelName);
+}
+
+/**
+ * Extracts a JSON object from an LLM response that may be wrapped in markdown.
+ * Handles cases like:
+ * - ```json\n{...}\n```
+ * - ## Analysis\n{...}
+ * - Some text before\n{...}\nSome text after
+ * - Raw JSON (returns as-is)
+ */
+export function extractJsonFromLLMResponse(text: string): string | null {
+  const trimmed = text.trim();
+
+  // Already valid JSON
+  try {
+    JSON.parse(trimmed);
+    return trimmed;
+  } catch {
+    // Not raw JSON, continue
+  }
+
+  // Extract from markdown code block (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (codeBlockMatch) {
+    try {
+      JSON.parse(codeBlockMatch[1].trim());
+      return codeBlockMatch[1].trim();
+    } catch {
+      // Code block content isn't valid JSON either, continue
+    }
+  }
+
+  // Find the first complete JSON object in the text
+  const firstBrace = trimmed.indexOf("{");
+  if (firstBrace === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = firstBrace; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+
+    if (depth === 0) {
+      const candidate = trimmed.slice(firstBrace, i + 1);
+      try {
+        JSON.parse(candidate);
+        return candidate;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 function extractCleanErrorMessage(rawMessage: string): string {
